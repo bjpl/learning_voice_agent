@@ -2,6 +2,9 @@
 
 An AI-powered voice conversation system for capturing and developing learning insights. Built with FastAPI, Claude Haiku, and modern web technologies.
 
+**Status:** Package.json not found - Python-based project
+**Purpose:** Voice-based learning interface and conversation capture system
+
 ## ✨ Features
 
 - **Voice Conversations**: Natural voice interaction through browser or phone (Twilio)
@@ -13,15 +16,21 @@ An AI-powered voice conversation system for capturing and developing learning in
 
 ## 🏗️ Architecture
 
-See [Architecture Documentation](docs/ARCHITECTURE.md) for detailed system design.
-
-### Core Components (SPARC Methodology Applied)
+### Core Components
 
 1. **Conversation Handler**: Claude Haiku integration with intelligent prompting
 2. **Audio Pipeline**: Whisper transcription with format detection
 3. **State Management**: Redis for conversation context (30-min TTL)
 4. **Database Layer**: SQLite with FTS5 for instant search
-5. **Frontend PWA**: Vue 3 with real-time updates
+5. **Frontend PWA**: Real-time voice interaction interface
+
+### Technology Stack
+
+- **Backend**: Python 3.11+ with FastAPI
+- **AI**: Anthropic Claude Haiku + OpenAI Whisper
+- **Database**: SQLite with FTS5 full-text search
+- **State**: Redis for session management
+- **Voice**: Browser WebSocket + optional Twilio phone integration
 
 ### Performance Targets
 
