@@ -31,54 +31,103 @@ The system is optimized for real-time performance with sub-2-second conversation
 - Redis-based session management with 30-minute conversation context retention
 - SQLite database with FTS5 for instant search and retrieval
 
-## Installation
+## Technical Overview
 
-### Prerequisites
+This project demonstrates **real-time voice AI conversation systems** with sub-2-second response times. The implementation showcases FastAPI WebSocket integration, Claude Haiku AI processing, full-text search with SQLite FTS5, and Progressive Web App architecture.
 
+**Key Technologies:**
+- FastAPI for high-performance async API server
+- Claude Haiku for AI-powered conversation intelligence
+- OpenAI Whisper for audio transcription
+- Redis for session management and state persistence
+- SQLite with FTS5 for full-text search capabilities
+- Vue 3 PWA for offline-capable progressive web app
+
+**Implementation Highlights:**
+- Sub-2-second conversation loop (audio transcription + AI response)
+- WebSocket-based real-time audio streaming
+- FTS5-powered full-text search across all conversations
+- Redis session management with 30-minute context retention
+- Optional Twilio phone integration for accessibility
+- PWA support with offline functionality and app installation
+
+## Exploring the Code
+
+The project structure demonstrates **modern async Python architecture**:
+
+```
+learning_voice_agent/
+├── app/
+│   ├── main.py                  # FastAPI application entry point
+│   ├── conversation_handler.py  # Claude Haiku integration
+│   ├── audio_pipeline.py        # Audio transcription processing
+│   ├── database.py              # SQLite database with FTS5
+│   ├── state_manager.py         # Redis session management
+│   └── twilio_handler.py        # Twilio webhook handlers
+├── static/
+│   ├── index.html               # Vue 3 PWA interface
+│   ├── manifest.json            # PWA manifest configuration
+│   └── sw.js                    # Service worker for offline support
+└── docker-compose.yml           # Docker deployment configuration
+```
+
+**For Technical Review:**
+
+Those interested in the implementation details can explore:
+- `/app` directory for FastAPI backend implementation
+- `conversation_handler.py` for Claude Haiku AI integration
+- `audio_pipeline.py` for real-time audio processing
+- `database.py` for SQLite FTS5 search implementation
+- `/static` directory for Vue 3 PWA frontend
+- `docker-compose.yml` for production deployment configuration
+
+**Local Development** _(Optional for developers)_
+
+<details>
+<summary>Click to expand setup instructions</summary>
+
+**Prerequisites:**
 - Python 3.11 or higher
 - Redis server
 - API keys for Anthropic Claude and OpenAI Whisper
 - Twilio account (optional, for phone support)
 
-### Setup
+**Setup:**
 
-Clone the repository:
 ```bash
+# Clone repository
 git clone https://github.com/bjpl/learning_voice_agent.git
 cd learning_voice_agent
-```
 
-Install dependencies:
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-Configure environment variables:
-```bash
+# Configure environment variables
 cp .env.example .env
 # Edit .env with required API keys
-```
 
-Initialize the application:
-```bash
+# Initialize the application
 python -m app.main
 ```
 
 Access the application at `http://localhost:8000/static/index.html`
 
-## Usage
+**Usage:**
 
-### Browser-Based Voice Interaction
+Browser-Based Voice Interaction:
+- Open the application in a web browser
+- Grant microphone permissions
+- Begin voice conversations with real-time WebSocket connections
 
-Open the application in a web browser and grant microphone permissions to begin voice conversations. The system supports real-time WebSocket connections for immediate audio processing and response.
+Phone Integration (Optional):
+- Configure Twilio credentials in environment variables
+- Set up webhook URL for phone-based voice interactions
 
-### Phone Integration (Optional)
+Progressive Web App Installation:
+- Click the installation prompt in supported browsers
+- Use the browser menu to install as standalone app
 
-Configure Twilio credentials in environment variables and set up webhook URL to enable phone-based voice interactions.
-
-### Progressive Web App Installation
-
-The application can be installed as a standalone app on supported browsers. Click the installation prompt or use the browser menu to install the app.
+</details>
 
 ## Project Structure
 
