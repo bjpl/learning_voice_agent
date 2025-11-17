@@ -1,122 +1,167 @@
-# Learning Voice Agent 🎙️
+# Learning Voice Agent
 
-An AI-powered voice conversation system for capturing and developing learning insights. Built with FastAPI, Claude Haiku, and modern web technologies.
+An AI-powered voice conversation system designed for capturing and developing learning insights through natural voice interaction.
 
-**Status:** Package.json not found - Python-based project
-**Purpose:** Voice-based learning interface and conversation capture system
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Configuration](#configuration)
+- [API Endpoints](#api-endpoints)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License](#license)
 
-## ✨ Features
+## Overview
 
-- **Voice Conversations**: Natural voice interaction through browser or phone (Twilio)
-- **AI Intelligence**: Claude Haiku provides thoughtful responses and follow-up questions
-- **Real-time Processing**: Sub-2-second conversation loops with WebSocket support
-- **Smart Search**: FTS5-powered instant search across all captures
-- **PWA Support**: Works offline, installable as an app
-- **Multi-channel**: Browser WebSocket and Twilio phone support
+Learning Voice Agent is a comprehensive voice conversation system built with FastAPI, Claude Haiku, and modern web technologies. The platform provides an interface for capturing learning insights through voice interactions, offering both browser-based WebSocket connections and optional Twilio phone integration for flexible accessibility.
 
-## 🏗️ Architecture
+The system is optimized for real-time performance with sub-2-second conversation loops, full-text search capabilities across all conversations, and Progressive Web App (PWA) support for offline functionality.
 
-### Core Components
+## Features
 
-1. **Conversation Handler**: Claude Haiku integration with intelligent prompting
-2. **Audio Pipeline**: Whisper transcription with format detection
-3. **State Management**: Redis for conversation context (30-min TTL)
-4. **Database Layer**: SQLite with FTS5 for instant search
-5. **Frontend PWA**: Real-time voice interaction interface
+- Voice conversation capability through browser WebSocket or Twilio phone integration
+- Claude Haiku AI providing intelligent responses and follow-up questions
+- Real-time audio processing with sub-2-second response times
+- FTS5-powered full-text search across conversation captures
+- Progressive Web App support with offline functionality and app installation
+- Redis-based session management with 30-minute conversation context retention
+- SQLite database with FTS5 for instant search and retrieval
 
-### Technology Stack
-
-- **Backend**: Python 3.11+ with FastAPI
-- **AI**: Anthropic Claude Haiku + OpenAI Whisper
-- **Database**: SQLite with FTS5 full-text search
-- **State**: Redis for session management
-- **Voice**: Browser WebSocket + optional Twilio phone integration
-
-### Performance Targets
-
-- Audio transcription: < 800ms (Whisper API)
-- Claude response: < 900ms (Haiku model)
-- Total loop: < 2 seconds end-to-end
-- Session timeout: 3 minutes of inactivity
-
-## 🚀 Quick Start
+## Installation
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11 or higher
 - Redis server
-- API Keys: Anthropic, OpenAI
-- (Optional) Twilio account for phone support
+- API keys for Anthropic Claude and OpenAI Whisper
+- Twilio account (optional, for phone support)
 
-### Installation
+### Setup
 
-1. Clone the repository:
+Clone the repository:
 ```bash
 git clone https://github.com/bjpl/learning_voice_agent.git
 cd learning_voice_agent
 ```
 
-2. Install dependencies:
+Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Copy environment variables:
+Configure environment variables:
 ```bash
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with required API keys
 ```
 
-4. Run the application:
+Initialize the application:
 ```bash
 python -m app.main
 ```
 
-5. Open browser to `http://localhost:8000/static/index.html`
+Access the application at `http://localhost:8000/static/index.html`
 
-## 🐳 Docker Deployment
+## Usage
 
-```bash
-# Build and run with Docker Compose
-docker-compose up -d
+### Browser-Based Voice Interaction
 
-# Or deploy to Railway
-railway up
+Open the application in a web browser and grant microphone permissions to begin voice conversations. The system supports real-time WebSocket connections for immediate audio processing and response.
+
+### Phone Integration (Optional)
+
+Configure Twilio credentials in environment variables and set up webhook URL to enable phone-based voice interactions.
+
+### Progressive Web App Installation
+
+The application can be installed as a standalone app on supported browsers. Click the installation prompt or use the browser menu to install the app.
+
+## Project Structure
+
+```
+learning_voice_agent/
+├── app/
+│   ├── main.py                  # FastAPI application entry point
+│   ├── conversation_handler.py  # Claude Haiku integration
+│   ├── audio_pipeline.py        # Audio transcription processing
+│   ├── database.py              # SQLite database with FTS5
+│   ├── state_manager.py         # Redis session management
+│   └── twilio_handler.py        # Twilio webhook handlers
+├── static/
+│   ├── index.html               # Vue 3 PWA interface
+│   ├── manifest.json            # PWA manifest configuration
+│   └── sw.js                    # Service worker for offline support
+├── requirements.txt             # Python dependencies
+└── docker-compose.yml           # Docker deployment configuration
 ```
 
-## 📱 PWA Installation
+## Development
 
-1. Open the app in Chrome/Edge
-2. Click "Install" when prompted
-3. Or use menu → "Install app"
+### Running Locally
 
-## 🔧 Configuration
+Start the development server:
+```bash
+python -m app.main
+```
+
+The application runs on port 8000 by default. API documentation is available at `http://localhost:8000/docs`.
+
+### Testing
+
+Run the test suite:
+```bash
+pytest tests/
+```
+
+Test WebSocket connections:
+```bash
+wscat -c ws://localhost:8000/ws/test-session
+```
+
+Test Twilio webhooks:
+```bash
+curl -X POST http://localhost:8000/twilio/voice \
+  -d "CallSid=test&From=+1234567890&CallStatus=ringing"
+```
+
+### Docker Deployment
+
+Build and run with Docker Compose:
+```bash
+docker-compose up -d
+```
+
+## Configuration
 
 ### Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `ANTHROPIC_API_KEY` | Claude API key | Yes |
-| `OPENAI_API_KEY` | Whisper API key | Yes |
-| `TWILIO_ACCOUNT_SID` | Twilio account | No |
-| `TWILIO_AUTH_TOKEN` | Twilio auth | No |
-| `REDIS_URL` | Redis connection | Yes |
+| ANTHROPIC_API_KEY | Claude API key | Yes |
+| OPENAI_API_KEY | Whisper API key | Yes |
+| REDIS_URL | Redis connection URL | Yes |
+| TWILIO_ACCOUNT_SID | Twilio account identifier | No |
+| TWILIO_AUTH_TOKEN | Twilio authentication token | No |
 
-### Twilio Setup (Optional)
+### Performance Targets
 
-1. Get a Twilio phone number
-2. Configure webhook URL: `https://your-domain/twilio/voice`
-3. Set environment variables
-4. Test with a phone call
+- Audio transcription: under 800ms (Whisper API)
+- Claude response generation: under 900ms (Haiku model)
+- Total conversation loop: under 2 seconds end-to-end
+- Session timeout: 3 minutes of inactivity
 
-## 📊 API Endpoints
+## API Endpoints
 
 ### REST API
 
-- `POST /api/conversation` - Process text/audio input
-- `POST /api/search` - Search captures with FTS5
-- `GET /api/stats` - System statistics
-- `GET /api/session/{id}/history` - Session history
+- `POST /api/conversation` - Process text or audio input
+- `POST /api/search` - Search conversation captures with full-text search
+- `GET /api/stats` - Retrieve system statistics
+- `GET /api/session/{id}/history` - Retrieve session conversation history
 
 ### WebSocket
 
@@ -124,130 +169,32 @@ railway up
 
 ### Twilio Webhooks
 
-- `POST /twilio/voice` - Handle incoming calls
-- `POST /twilio/process-speech` - Process speech input
+- `POST /twilio/voice` - Handle incoming phone calls
+- `POST /twilio/process-speech` - Process speech input from calls
 
-## 🧠 Claude System Prompt
-
-The system uses a carefully crafted prompt to make Claude act as a learning companion:
-
-- Asks clarifying questions for vague inputs
-- Connects new ideas to previous topics
-- Keeps responses under 3 sentences
-- Never lectures unless asked
-- Maintains conversation context
-
-## 💾 Database Schema
-
-```sql
-CREATE TABLE captures (
-    id INTEGER PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    user_text TEXT NOT NULL,
-    agent_text TEXT NOT NULL,
-    metadata TEXT
-);
-
--- FTS5 virtual table for search
-CREATE VIRTUAL TABLE captures_fts USING fts5(
-    session_id UNINDEXED,
-    user_text,
-    agent_text,
-    content=captures
-);
-```
-
-## 🔍 Search Features
-
-- Full-text search with BM25 ranking
-- Highlighted snippets in results
-- Instant search-as-you-type
-- Keyboard shortcut: Cmd+K
-
-## 📈 Monitoring
-
-- Active session tracking
-- Database statistics
-- Redis connection health
-- Conversation metrics
-
-## 🚢 Deployment Options
+## Deployment
 
 ### Railway (Recommended)
-- Push to deploy with `railway up`
-- Automatic SSL and scaling
-- Built-in Redis support
+
+Deploy using Railway CLI:
+```bash
+railway up
+```
+
+The platform provides automatic SSL, scaling, and built-in Redis support.
 
 ### Cloudflare Tunnel
-- Secure HTTPS without ports
-- Zero-trust networking
-- Included in docker-compose
 
-### Litestream Backup
-- Continuous SQLite replication
-- Backup to R2/S3
-- Point-in-time recovery
+Secure HTTPS deployment without port configuration is available through Cloudflare Tunnel, included in the docker-compose configuration.
 
-## 💰 Estimated Costs
+### Backup Strategy
 
-- Twilio: ~$20/month (phone number + minutes)
-- Claude Haiku: ~$5/month (at moderate usage)
-- Whisper API: ~$3/month
-- Hosting: ~$5/month (Railway)
-- **Total: ~$33/month**
+Continuous SQLite replication to cloud storage (R2/S3) is supported via Litestream for point-in-time recovery capabilities.
 
-## 🛠️ Development
+## Contributing
 
-### Project Structure
-```
-learning_voice_agent/
-├── app/
-│   ├── main.py              # FastAPI application
-│   ├── conversation_handler.py  # Claude integration
-│   ├── audio_pipeline.py    # Audio processing
-│   ├── database.py          # SQLite + FTS5
-│   ├── state_manager.py     # Redis state
-│   └── twilio_handler.py    # Twilio webhooks
-├── static/
-│   ├── index.html           # Vue 3 PWA
-│   ├── manifest.json        # PWA manifest
-│   └── sw.js               # Service worker
-└── requirements.txt
-```
+Contributions are welcome. Please follow the SPARC methodology for new features and submit pull requests with clear descriptions of changes.
 
-### Testing
+## License
 
-```bash
-# Run tests
-pytest tests/
-
-# Test WebSocket connection
-wscat -c ws://localhost:8000/ws/test-session
-
-# Test Twilio webhook
-curl -X POST http://localhost:8000/twilio/voice \
-  -d "CallSid=test&From=+1234567890&CallStatus=ringing"
-```
-
-## 📝 License
-
-MIT License - See LICENSE file
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Apply SPARC methodology to new features
-4. Submit a pull request
-
-## 🙏 Acknowledgments
-
-- Built with Flow Nexus orchestration
-- SPARC methodology for efficient development
-- Claude Haiku for intelligent conversations
-- Whisper for accurate transcription
-
----
-
-**Built with ❤️ using SPARC methodology and Flow Nexus**
+MIT License - See LICENSE file for details
