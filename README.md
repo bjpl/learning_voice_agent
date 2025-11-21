@@ -45,6 +45,8 @@ An AI-powered voice conversation system for capturing and developing learning in
 ### 📖 Architecture & Reference
 
 - **[Architecture v1.0](docs/ARCHITECTURE_V1.md)** - Complete system architecture with diagrams
+- **[Phase 2 Implementation Guide](docs/PHASE2_IMPLEMENTATION_GUIDE.md)** - Multi-agent system documentation
+- **[Agent API Reference](docs/AGENT_API_REFERENCE.md)** - Complete API for all agents
 - **[API Documentation](docs/API_DOCUMENTATION.md)** - REST, WebSocket, Twilio APIs with examples
 - **[Database Schema](docs/ARCHITECTURE_V1.md#database-schema)** - SQLite + FTS5 + Redis
 
@@ -52,6 +54,7 @@ An AI-powered voice conversation system for capturing and developing learning in
 
 - **[Migration Plan](docs/MIGRATION_PLAN.md)** - v1.0 → v2.0 migration strategy (20 weeks)
 - **[Rebuild Strategy](docs/REBUILD_STRATEGY.md)** - Comprehensive v2.0 rebuild with multi-agent orchestration
+- **[Phase 2 Testing Guide](docs/PHASE2_TESTING_GUIDE.md)** - Testing strategy for multi-agent system
 - **[Project Status](PROJECT_STATUS.md)** - Current health metrics and next actions
 - **[Tech Debt](docs/TECH_DEBT.md)** - Known issues and improvements
 
@@ -410,8 +413,15 @@ MIT License - See [LICENSE](LICENSE) file for details.
 - ✅ Twilio phone integration
 - ✅ Comprehensive documentation
 
-### v2.0 (Planning - 20 weeks)
-- 🔄 Multi-agent orchestration (LangGraph/CrewAI)
+### v2.0 Phase 2 (In Progress - Multi-Agent System)
+- 🚀 Multi-agent orchestration (LangGraph/CrewAI)
+- 📚 ConversationAgent, AnalysisAgent, ResearchAgent, SynthesisAgent
+- 🤝 Agent coordination and parallel execution
+- 🛠️ Tool integration (calculator, web search, ArXiv)
+- ✅ Comprehensive test suite (80%+ coverage)
+- 📖 Complete API documentation
+
+### v2.0 Remaining Phases
 - 🔄 Semantic memory (ChromaDB + embeddings)
 - 🔄 Multi-modal (vision + documents)
 - 🔄 Real-time learning
@@ -420,6 +430,7 @@ MIT License - See [LICENSE](LICENSE) file for details.
 - 🔄 Analytics engine
 
 **Read the full v2.0 plan: [docs/REBUILD_STRATEGY.md](docs/REBUILD_STRATEGY.md)**
+**Phase 2 Implementation Guide: [docs/PHASE2_IMPLEMENTATION_GUIDE.md](docs/PHASE2_IMPLEMENTATION_GUIDE.md)**
 
 ---
 

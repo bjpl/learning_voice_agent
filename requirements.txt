@@ -16,6 +16,20 @@ jinja2==3.1.3
 prometheus-client==0.19.0
 prometheus-fastapi-instrumentator==6.1.0
 
+# Agent Framework Dependencies (Phase 2)
+langgraph>=0.0.20
+langchain>=0.1.0
+langchain-anthropic>=0.1.0
+structlog>=24.1.0
+
+# NLP and Analysis Dependencies (Phase 2)
+spacy==3.7.2
+scikit-learn==1.3.2
+
+# Research Agent Tools (Phase 2)
+tavily-python>=0.3.0  # Optional: Enhanced web search
+arxiv>=2.1.0  # Academic paper search
+
 # Development Dependencies
 pytest==7.4.3
 pytest-cov==4.1.0
