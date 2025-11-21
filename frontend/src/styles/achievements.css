@@ -1,0 +1,502 @@
+/* ============================================
+   ACHIEVEMENTS & GOALS - GAMIFICATION STYLES
+   ============================================ */
+
+/* ===========================================
+   1. RARITY COLORS
+   =========================================== */
+
+:root {
+  /* Common - Gray */
+  --rarity-common: #9ca3af;
+  --rarity-common-light: #e5e7eb;
+  --rarity-common-dark: #6b7280;
+
+  /* Uncommon - Green */
+  --rarity-uncommon: #22c55e;
+  --rarity-uncommon-light: #dcfce7;
+  --rarity-uncommon-dark: #16a34a;
+
+  /* Rare - Blue */
+  --rarity-rare: #3b82f6;
+  --rarity-rare-light: #dbeafe;
+  --rarity-rare-dark: #2563eb;
+
+  /* Epic - Purple */
+  --rarity-epic: #a855f7;
+  --rarity-epic-light: #f3e8ff;
+  --rarity-epic-dark: #9333ea;
+
+  /* Legendary - Gold */
+  --rarity-legendary: #fbbf24;
+  --rarity-legendary-light: #fef3c7;
+  --rarity-legendary-dark: #f59e0b;
+
+  /* Goal type colors */
+  --goal-streak: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+  --goal-sessions: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  --goal-topics: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+  --goal-quality: linear-gradient(135deg, #eab308 0%, #f59e0b 100%);
+  --goal-exchanges: linear-gradient(135deg, #8b5cf6 0%, #a855f7 100%);
+  --goal-duration: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  --goal-feedback: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+  --goal-custom: linear-gradient(135deg, #6b7280 0%, #475569 100%);
+}
+
+/* Dark mode overrides */
+.dark {
+  --rarity-common-light: #374151;
+  --rarity-uncommon-light: #064e3b;
+  --rarity-rare-light: #1e3a5f;
+  --rarity-epic-light: #4c1d95;
+  --rarity-legendary-light: #78350f;
+}
+
+/* ===========================================
+   2. GLOW EFFECTS
+   =========================================== */
+
+.glow-common {
+  box-shadow: 0 0 15px rgba(156, 163, 175, 0.4);
+}
+
+.glow-uncommon {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+}
+
+.glow-rare {
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
+}
+
+.glow-epic {
+  box-shadow: 0 0 30px rgba(168, 85, 247, 0.5);
+}
+
+.glow-legendary {
+  box-shadow:
+    0 0 30px rgba(251, 191, 36, 0.6),
+    0 0 60px rgba(251, 191, 36, 0.3);
+}
+
+/* Animated glows */
+.glow-pulse-rare {
+  animation: glow-pulse-rare 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-rare {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(59, 130, 246, 0.6);
+  }
+}
+
+.glow-pulse-epic {
+  animation: glow-pulse-epic 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-epic {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
+  }
+}
+
+.glow-pulse-legendary {
+  animation: glow-pulse-legendary 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse-legendary {
+  0%, 100% {
+    box-shadow:
+      0 0 25px rgba(251, 191, 36, 0.5),
+      0 0 50px rgba(251, 191, 36, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 40px rgba(251, 191, 36, 0.7),
+      0 0 80px rgba(251, 191, 36, 0.4);
+  }
+}
+
+/* ===========================================
+   3. UNLOCK ANIMATIONS
+   =========================================== */
+
+/* Achievement unlock */
+@keyframes achievement-unlock {
+  0% {
+    transform: scale(0) rotate(-180deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(10deg);
+  }
+  70% {
+    transform: scale(0.9) rotate(-5deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.achievement-unlock {
+  animation: achievement-unlock 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Badge pop */
+@keyframes badge-pop {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  70% {
+    transform: scale(0.85);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.badge-pop {
+  animation: badge-pop 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Celebration burst */
+@keyframes celebration-burst {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.celebration-burst::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: celebration-burst 0.6s ease-out forwards;
+}
+
+/* ===========================================
+   4. SHIMMER & SHINE EFFECTS
+   =========================================== */
+
+/* Legendary shimmer */
+@keyframes legendary-shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.shimmer-legendary {
+  background: linear-gradient(
+    90deg,
+    var(--rarity-legendary-dark) 0%,
+    var(--rarity-legendary) 25%,
+    #fff7ed 50%,
+    var(--rarity-legendary) 75%,
+    var(--rarity-legendary-dark) 100%
+  );
+  background-size: 200% auto;
+  animation: legendary-shimmer 3s linear infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Card shine effect */
+@keyframes card-shine {
+  0% {
+    transform: translateX(-100%) rotate(45deg);
+  }
+  100% {
+    transform: translateX(100%) rotate(45deg);
+  }
+}
+
+.card-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.card-shine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    45deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%) rotate(45deg);
+}
+
+.card-shine:hover::before {
+  animation: card-shine 0.8s ease-out;
+}
+
+/* ===========================================
+   5. PROGRESS ANIMATIONS
+   =========================================== */
+
+/* Progress fill */
+@keyframes progress-fill-animate {
+  from {
+    width: 0;
+  }
+}
+
+.progress-animate {
+  animation: progress-fill-animate 1s ease-out;
+}
+
+/* Circular progress */
+@keyframes circular-progress {
+  from {
+    stroke-dashoffset: var(--circumference);
+  }
+}
+
+.circular-progress-animate {
+  animation: circular-progress 1.5s ease-out;
+}
+
+/* Progress pulse */
+@keyframes progress-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.progress-pulse {
+  animation: progress-pulse 2s ease-in-out infinite;
+}
+
+/* ===========================================
+   6. CONFETTI & PARTICLES
+   =========================================== */
+
+/* Confetti fall */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-100%) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.confetti {
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  animation: confetti-fall var(--duration, 3s) linear forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+/* Sparkle */
+@keyframes sparkle {
+  0%, 100% {
+    transform: scale(0) rotate(0deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+}
+
+.sparkle {
+  animation: sparkle var(--duration, 1s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+/* Star burst */
+@keyframes star-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1) rotate(var(--rotation, 0deg));
+    opacity: 0;
+  }
+}
+
+.star-burst > * {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  animation: star-burst 1s ease-out forwards;
+}
+
+/* ===========================================
+   7. TOAST ANIMATIONS
+   =========================================== */
+
+/* Toast slide in */
+@keyframes toast-slide-in {
+  0% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Toast slide out */
+@keyframes toast-slide-out {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+.toast-enter {
+  animation: toast-slide-in 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.toast-exit {
+  animation: toast-slide-out 0.3s ease-in forwards;
+}
+
+/* ===========================================
+   8. HOVER EFFECTS
+   =========================================== */
+
+/* Lift on hover */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Scale on hover */
+.hover-scale {
+  transition: transform 0.2s ease;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+/* Glow on hover by rarity */
+.hover-glow-common:hover {
+  box-shadow: 0 0 20px rgba(156, 163, 175, 0.5);
+}
+
+.hover-glow-uncommon:hover {
+  box-shadow: 0 0 25px rgba(34, 197, 94, 0.5);
+}
+
+.hover-glow-rare:hover {
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+}
+
+.hover-glow-epic:hover {
+  box-shadow: 0 0 35px rgba(168, 85, 247, 0.6);
+}
+
+.hover-glow-legendary:hover {
+  box-shadow:
+    0 0 40px rgba(251, 191, 36, 0.7),
+    0 0 80px rgba(251, 191, 36, 0.4);
+}
+
+/* ===========================================
+   9. UTILITY CLASSES
+   =========================================== */
+
+/* Rarity text colors */
+.text-rarity-common { color: var(--rarity-common); }
+.text-rarity-uncommon { color: var(--rarity-uncommon); }
+.text-rarity-rare { color: var(--rarity-rare); }
+.text-rarity-epic { color: var(--rarity-epic); }
+.text-rarity-legendary { color: var(--rarity-legendary); }
+
+/* Rarity background colors */
+.bg-rarity-common { background-color: var(--rarity-common-light); }
+.bg-rarity-uncommon { background-color: var(--rarity-uncommon-light); }
+.bg-rarity-rare { background-color: var(--rarity-rare-light); }
+.bg-rarity-epic { background-color: var(--rarity-epic-light); }
+.bg-rarity-legendary { background-color: var(--rarity-legendary-light); }
+
+/* Rarity borders */
+.border-rarity-common { border-color: var(--rarity-common); }
+.border-rarity-uncommon { border-color: var(--rarity-uncommon); }
+.border-rarity-rare { border-color: var(--rarity-rare); }
+.border-rarity-epic { border-color: var(--rarity-epic); }
+.border-rarity-legendary { border-color: var(--rarity-legendary); }
+
+/* Goal type backgrounds */
+.bg-goal-streak { background: var(--goal-streak); }
+.bg-goal-sessions { background: var(--goal-sessions); }
+.bg-goal-topics { background: var(--goal-topics); }
+.bg-goal-quality { background: var(--goal-quality); }
+.bg-goal-exchanges { background: var(--goal-exchanges); }
+.bg-goal-duration { background: var(--goal-duration); }
+.bg-goal-feedback { background: var(--goal-feedback); }
+.bg-goal-custom { background: var(--goal-custom); }
+
+/* ===========================================
+   10. RESPONSIVE ADJUSTMENTS
+   =========================================== */
+
+@media (max-width: 640px) {
+  .achievement-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .goal-card {
+    padding: 1rem;
+  }
+
+  .toast-container {
+    left: 0.5rem;
+    right: 0.5rem;
+    top: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
