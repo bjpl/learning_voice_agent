@@ -1,0 +1,352 @@
+{
+  "dashboard": {
+    "title": "Learning Voice Agent - Observability Dashboard",
+    "tags": ["voice-agent", "learning", "ai"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (requests/sec)",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(http_requests_total[5m])",
+            "legendFormat": "{{endpoint}} - {{method}}"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "reqps",
+            "label": "Requests/sec"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Response Time (p95)",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{endpoint}} - p95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{endpoint}} - p50"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
+        "targets": [
+          {
+            "expr": "rate(errors_total[5m])",
+            "legendFormat": "{{component}} - {{error_type}}"
+          }
+        ],
+        "alert": {
+          "name": "High Error Rate",
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0.1],
+                "type": "gt"
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              },
+              "reducer": {
+                "params": [],
+                "type": "avg"
+              },
+              "type": "query"
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "title": "Active Sessions & WebSockets",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
+        "targets": [
+          {
+            "expr": "sessions_active",
+            "legendFormat": "Active Sessions"
+          },
+          {
+            "expr": "websocket_connections_active",
+            "legendFormat": "Active WebSockets"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Claude API Performance",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        },
+        "targets": [
+          {
+            "expr": "rate(claude_api_calls_total[5m])",
+            "legendFormat": "{{model}} - {{status}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(claude_api_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 Duration"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Whisper API Performance",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        },
+        "targets": [
+          {
+            "expr": "rate(whisper_api_calls_total[5m])",
+            "legendFormat": "{{status}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(whisper_api_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 Duration"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Database Query Performance",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 24
+        },
+        "targets": [
+          {
+            "expr": "rate(database_queries_total[5m])",
+            "legendFormat": "{{operation}} - {{table}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(database_query_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 Duration"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Cache Hit Ratio",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 24
+        },
+        "targets": [
+          {
+            "expr": "cache_hit_ratio",
+            "legendFormat": "Hit Ratio"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        ],
+        "alert": {
+          "name": "Low Cache Hit Ratio",
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0.5],
+                "type": "lt"
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              },
+              "reducer": {
+                "params": [],
+                "type": "avg"
+              },
+              "type": "query"
+            }
+          ]
+        }
+      },
+      {
+        "id": 9,
+        "title": "API Cost Tracking (USD)",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 32
+        },
+        "targets": [
+          {
+            "expr": "rate(api_cost_total[1h]) * 3600",
+            "legendFormat": "{{provider}} - USD/hour"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Conversation Metrics",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 32
+        },
+        "targets": [
+          {
+            "expr": "rate(conversation_exchanges_total[5m])",
+            "legendFormat": "{{intent}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(conversation_quality_score_bucket[5m]))",
+            "legendFormat": "Quality Score (p95)"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "System Health",
+        "type": "singlestat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 40
+        },
+        "targets": [
+          {
+            "expr": "up"
+          }
+        ],
+        "valueName": "current",
+        "colorBackground": true,
+        "thresholds": "0.5,1"
+      },
+      {
+        "id": 12,
+        "title": "Requests In Progress",
+        "type": "singlestat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 40
+        },
+        "targets": [
+          {
+            "expr": "sum(http_requests_in_progress)"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Total API Cost (24h)",
+        "type": "singlestat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 40
+        },
+        "targets": [
+          {
+            "expr": "increase(api_cost_total[24h])"
+          }
+        ],
+        "format": "currencyUSD"
+      },
+      {
+        "id": 14,
+        "title": "Error Rate (5m)",
+        "type": "singlestat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 40
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(errors_total[5m]))"
+          }
+        ],
+        "colorBackground": true,
+        "thresholds": "0.1,1"
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus"
+        }
+      ]
+    }
+  }
+}
