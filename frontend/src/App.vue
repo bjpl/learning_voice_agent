@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import InstallPrompt from '@/components/pwa/InstallPrompt.vue';
+import OfflineIndicator from '@/components/pwa/OfflineIndicator.vue';
+import UpdatePrompt from '@/components/pwa/UpdatePrompt.vue';
 
 interface NavItem {
   name: string;
@@ -37,6 +40,11 @@ const isActiveRoute = (path: string): boolean => {
 </script>
 
 <template>
+  <!-- PWA Components -->
+  <OfflineIndicator />
+  <InstallPrompt />
+  <UpdatePrompt />
+
   <div class="min-h-screen bg-gray-50 flex">
     <!-- Sidebar -->
     <aside
