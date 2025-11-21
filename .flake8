@@ -1,0 +1,43 @@
+[flake8]
+# Base configuration
+max-line-length = 100
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .eggs,
+    *.egg,
+    build,
+    dist,
+    .pytest_cache,
+    .mypy_cache,
+    htmlcov
+
+# Error codes to ignore
+ignore =
+    E203,  # whitespace before ':'
+    E266,  # too many leading '#' for block comment
+    E501,  # line too long (handled by black)
+    W503,  # line break before binary operator
+    W504,  # line break after binary operator
+    E402,  # module level import not at top of file
+    F401,  # imported but unused (let mypy handle this)
+
+# Complexity
+max-complexity = 10
+max-cognitive-complexity = 15
+
+# Per-file ignores
+per-file-ignores =
+    __init__.py:F401,E402
+    tests/*:E501,F401,F811
+
+# Show source code for errors
+show-source = True
+statistics = True
+count = True
+
+# Documentation
+docstring-convention = google
