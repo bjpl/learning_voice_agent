@@ -1,0 +1,37 @@
+Sample Text Document
+
+This is a sample text document for testing the document processing pipeline.
+It contains multiple paragraphs to demonstrate text extraction and chunking.
+
+Introduction
+------------
+The document processing system handles various file formats including PDF,
+DOCX, TXT, and Markdown files. It extracts text, metadata, and structure
+from these documents.
+
+Features
+--------
+- Automatic format detection
+- Text extraction with encoding handling
+- Metadata extraction (file size, word count, etc.)
+- Text chunking for RAG systems
+- Structure detection for Markdown
+
+Technical Details
+-----------------
+The text parser uses UTF-8 encoding by default with fallback to latin-1
+for compatibility. It normalizes Unicode characters and whitespace to
+ensure consistent processing.
+
+Chunking is performed using word-based approximation with configurable
+chunk size and overlap. This enables efficient retrieval in RAG systems.
+
+Conclusion
+----------
+This sample document demonstrates the capabilities of the text processing
+system. It can handle plain text files with various content types and
+structures.
+
+Additional paragraphs provide more content for testing chunking algorithms.
+The system should split this document into multiple chunks based on the
+configured chunk size and overlap settings.

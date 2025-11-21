@@ -2,7 +2,7 @@
 FastAPI Main Application - Integration Layer
 PATTERN: Dependency injection with lifecycle management
 """
-from fastapi import FastAPI, WebSocket, HTTPException, Depends, BackgroundTasks, Request
+from fastapi import FastAPI, WebSocket, HTTPException, Depends, BackgroundTasks, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,7 +25,11 @@ from app.models import (
     SearchRequest,
     SearchResponse,
     HybridSearchRequest,
-    HybridSearchResponse
+    HybridSearchResponse,
+    ImageUploadResponse,
+    DocumentUploadResponse,
+    MultiModalConversationRequest,
+    MultiModalConversationResponse
 )
 from app.twilio_handler import setup_twilio_routes
 from app.logger import api_logger, set_request_context, clear_request_context
@@ -42,6 +46,15 @@ from app.search.vector_store import vector_store as search_vector_store
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+# Multimodal imports (Phase 4)
+from app.multimodal import (
+    file_manager,
+    vision_analyzer,
+    document_processor,
+    metadata_store,
+    multimodal_indexer
+)
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -63,6 +76,9 @@ async def lifespan(app: FastAPI):
     app.state.startup_time = time.time()
     await db.initialize()
     await state_manager.initialize()
+
+    # Initialize multimodal services (Phase 4)
+    await metadata_store.initialize()
 
     # Initialize hybrid search engine
     try:
@@ -658,6 +674,429 @@ async def get_session_history(session_id: str, limit: int = 20):
         "history": history,
         "count": len(history)
     }
+
+# ============================================================================
+# MULTIMODAL ENDPOINTS (Phase 4)
+# ============================================================================
+
+@app.post("/api/upload/image")
+@limiter.limit("10/minute")
+async def upload_image(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),
+    analyze: bool = Form(True),
+    http_request: Request = None
+) -> ImageUploadResponse:
+    """
+    Upload and optionally analyze an image
+
+    PATTERN: Multimodal file upload with AI analysis
+    WHY: Enable vision-enhanced conversations
+
+    Parameters:
+    - file: Image file (PNG, JPEG, GIF, WebP, max 5MB)
+    - session_id: Session ID for context (optional)
+    - analyze: Run vision analysis (default: True)
+
+    Returns:
+    - file_id, url, analysis (if requested)
+
+    Rate Limit: 10 requests per minute
+    """
+    start_time = time.time()
+    session_id = session_id or str(uuid.uuid4())
+
+    set_request_context(session_id=session_id, endpoint="/api/upload/image")
+
+    try:
+        api_logger.info(
+            "image_upload_started",
+            session_id=session_id,
+            filename=file.filename,
+            content_type=file.content_type
+        )
+
+        # Read file data
+        file_data = await file.read()
+
+        # Validate and save file
+        file_metadata = await file_manager.save_file(
+            file_data=file_data,
+            original_filename=file.filename,
+            file_type="image",
+            session_id=session_id
+        )
+
+        # Save metadata to database
+        await metadata_store.save_file_metadata(file_metadata)
+
+        # Analyze if requested
+        analysis = None
+        if analyze:
+            analysis = await vision_analyzer.analyze_image(
+                file_metadata["stored_path"]
+            )
+
+            # Save analysis
+            await metadata_store.save_analysis(
+                file_id=file_metadata["file_id"],
+                analysis_type="vision",
+                analysis_result=analysis
+            )
+
+            # Index in vector store if successful
+            if analysis.get('success'):
+                indexed = await multimodal_indexer.index_image(
+                    file_id=file_metadata["file_id"],
+                    analysis=analysis,
+                    session_id=session_id
+                )
+
+                if indexed:
+                    await metadata_store.mark_indexed(file_metadata["file_id"])
+
+        processing_time = (time.time() - start_time) * 1000
+
+        api_logger.info(
+            "image_upload_complete",
+            session_id=session_id,
+            file_id=file_metadata["file_id"],
+            analyzed=analyze,
+            processing_time_ms=round(processing_time, 2)
+        )
+
+        return ImageUploadResponse(
+            file_id=file_metadata["file_id"],
+            url=f"/api/files/{file_metadata['file_id']}",
+            filename=file.filename,
+            size=file_metadata["file_size"],
+            mime_type=file_metadata["mime_type"],
+            analysis=analysis if analyze else None
+        )
+
+    except ValueError as e:
+        api_logger.warning("image_upload_validation_error", error=str(e))
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        api_logger.error(
+            "image_upload_error",
+            session_id=session_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True
+        )
+        raise HTTPException(500, f"Image upload failed: {str(e)}")
+    finally:
+        clear_request_context()
+
+@app.post("/api/upload/document")
+@limiter.limit("5/minute")
+async def upload_document(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),
+    extract_text: bool = Form(True),
+    http_request: Request = None
+) -> DocumentUploadResponse:
+    """
+    Upload and process a document
+
+    PATTERN: Document upload with text extraction and indexing
+    WHY: Enable document-enhanced conversations and RAG
+
+    Parameters:
+    - file: Document file (PDF, DOCX, TXT, MD, max 10MB)
+    - session_id: Session ID for context
+    - extract_text: Extract text and index (default: True)
+
+    Returns:
+    - file_id, metadata, text_preview, chunks
+
+    Rate Limit: 5 requests per minute
+    """
+    start_time = time.time()
+    session_id = session_id or str(uuid.uuid4())
+
+    set_request_context(session_id=session_id, endpoint="/api/upload/document")
+
+    try:
+        api_logger.info(
+            "document_upload_started",
+            session_id=session_id,
+            filename=file.filename,
+            content_type=file.content_type
+        )
+
+        # Read file data
+        file_data = await file.read()
+
+        # Validate and save file
+        file_metadata = await file_manager.save_file(
+            file_data=file_data,
+            original_filename=file.filename,
+            file_type="document",
+            session_id=session_id
+        )
+
+        # Save metadata to database
+        await metadata_store.save_file_metadata(file_metadata)
+
+        # Extract text if requested
+        text_preview = None
+        chunk_count = 0
+        doc_metadata = None
+
+        if extract_text:
+            processing_result = await document_processor.process_document(
+                file_metadata["stored_path"],
+                extract_metadata=True,
+                chunk_text=True
+            )
+
+            # Save processing result
+            await metadata_store.save_analysis(
+                file_id=file_metadata["file_id"],
+                analysis_type="document",
+                analysis_result=processing_result
+            )
+
+            if processing_result.get('success'):
+                # Get preview
+                text_preview = await document_processor.extract_preview(
+                    file_metadata["stored_path"],
+                    max_length=200
+                )
+
+                # Index chunks
+                chunks = processing_result.get('chunks', [])
+                chunk_count = len(chunks)
+
+                if chunks:
+                    index_result = await multimodal_indexer.index_document(
+                        file_id=file_metadata["file_id"],
+                        chunks=chunks,
+                        session_id=session_id
+                    )
+
+                    if index_result.get('success'):
+                        await metadata_store.mark_indexed(file_metadata["file_id"])
+
+                # Extract metadata
+                doc_metadata = processing_result.get('metadata')
+
+        processing_time = (time.time() - start_time) * 1000
+
+        api_logger.info(
+            "document_upload_complete",
+            session_id=session_id,
+            file_id=file_metadata["file_id"],
+            extracted=extract_text,
+            chunk_count=chunk_count,
+            processing_time_ms=round(processing_time, 2)
+        )
+
+        return DocumentUploadResponse(
+            file_id=file_metadata["file_id"],
+            url=f"/api/files/{file_metadata['file_id']}",
+            filename=file.filename,
+            size=file_metadata["file_size"],
+            mime_type=file_metadata["mime_type"],
+            text_preview=text_preview,
+            chunk_count=chunk_count,
+            metadata=doc_metadata
+        )
+
+    except ValueError as e:
+        api_logger.warning("document_upload_validation_error", error=str(e))
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        api_logger.error(
+            "document_upload_error",
+            session_id=session_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True
+        )
+        raise HTTPException(500, f"Document upload failed: {str(e)}")
+    finally:
+        clear_request_context()
+
+@app.get("/api/files/{file_id}")
+async def get_file(file_id: str, file_type: Optional[str] = "image"):
+    """
+    Retrieve uploaded file
+
+    PATTERN: File retrieval with content negotiation
+    WHY: Allow access to uploaded files
+
+    Parameters:
+    - file_id: Unique file ID
+    - file_type: File type ('image' or 'document')
+
+    Returns:
+    - File content with appropriate MIME type
+    """
+    try:
+        # Track access
+        await metadata_store.track_access(file_id)
+
+        # Retrieve file
+        result = await file_manager.get_file(file_id, file_type)
+
+        if result is None:
+            raise HTTPException(404, "File not found")
+
+        file_data, mime_type = result
+
+        api_logger.info(
+            "file_retrieved",
+            file_id=file_id,
+            file_type=file_type,
+            mime_type=mime_type
+        )
+
+        return Response(content=file_data, media_type=mime_type)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_logger.error(
+            "file_retrieval_error",
+            file_id=file_id,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(500, f"File retrieval failed: {str(e)}")
+
+@app.post("/api/conversation/multimodal")
+@limiter.limit("20/minute")
+async def multimodal_conversation(
+    request: MultiModalConversationRequest,
+    background_tasks: BackgroundTasks,
+    http_request: Request
+) -> MultiModalConversationResponse:
+    """
+    Conversation with multi-modal context (text + images + documents)
+
+    PATTERN: Multi-modal AI conversation
+    WHY: Enable richer conversations with visual and document context
+
+    Parameters:
+    - text: User message
+    - image_ids: List of uploaded image IDs
+    - document_ids: List of uploaded document IDs
+    - session_id: Session for context
+
+    Returns:
+    - Conversation response with multi-modal understanding
+
+    Rate Limit: 20 requests per minute
+    """
+    start_time = time.time()
+    session_id = request.session_id or str(uuid.uuid4())
+
+    set_request_context(session_id=session_id, endpoint="/api/conversation/multimodal")
+
+    try:
+        api_logger.info(
+            "multimodal_conversation_started",
+            session_id=session_id,
+            image_count=len(request.image_ids),
+            document_count=len(request.document_ids)
+        )
+
+        # Gather multimodal context
+        image_analyses = []
+        document_texts = []
+
+        # Fetch image analyses
+        for image_id in request.image_ids:
+            metadata = await metadata_store.get_file_metadata(image_id)
+            if metadata and metadata.get('analysis_result'):
+                try:
+                    analysis = json.loads(metadata['analysis_result'])
+                    if analysis.get('success'):
+                        image_analyses.append(analysis)
+                except json.JSONDecodeError:
+                    pass
+
+        # Fetch document texts (from chunks)
+        for doc_id in request.document_ids:
+            metadata = await metadata_store.get_file_metadata(doc_id)
+            if metadata and metadata.get('analysis_result'):
+                try:
+                    doc_result = json.loads(metadata['analysis_result'])
+                    if doc_result.get('success'):
+                        # Get preview or first few chunks
+                        doc_text = doc_result.get('text', '')[:1000]  # Limit to 1000 chars
+                        if doc_text:
+                            document_texts.append(doc_text)
+                except json.JSONDecodeError:
+                    pass
+
+        # Build enriched context
+        enriched_text = request.text
+
+        if image_analyses:
+            enriched_text += "\n\n[Context from images]:\n"
+            for i, analysis in enumerate(image_analyses, 1):
+                enriched_text += f"Image {i}: {analysis.get('analysis', '')[:500]}\n"
+
+        if document_texts:
+            enriched_text += "\n\n[Context from documents]:\n"
+            for i, doc_text in enumerate(document_texts, 1):
+                enriched_text += f"Document {i}: {doc_text}\n"
+
+        # Get conversation context
+        context = await state_manager.get_conversation_context(session_id)
+
+        # Generate response with enriched context
+        agent_response = await conversation_handler.generate_response(
+            enriched_text,
+            context
+        )
+
+        intent = conversation_handler.detect_intent(request.text)
+
+        # Track conversation exchange
+        metrics_collector.track_conversation_exchange("multimodal_query")
+
+        # Update state in background
+        background_tasks.add_task(
+            update_conversation_state,
+            session_id,
+            request.text,
+            agent_response
+        )
+
+        processing_time = (time.time() - start_time) * 1000
+
+        api_logger.info(
+            "multimodal_conversation_complete",
+            session_id=session_id,
+            processing_time_ms=round(processing_time, 2)
+        )
+
+        return MultiModalConversationResponse(
+            session_id=session_id,
+            user_text=request.text,
+            agent_text=agent_response,
+            intent=intent,
+            image_count=len(request.image_ids),
+            document_count=len(request.document_ids),
+            processing_time_ms=round(processing_time, 2)
+        )
+
+    except Exception as e:
+        api_logger.error(
+            "multimodal_conversation_error",
+            session_id=session_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True
+        )
+        raise HTTPException(500, f"Multimodal conversation failed: {str(e)}")
+    finally:
+        clear_request_context()
 
 # Setup Twilio routes
 setup_twilio_routes(app)
