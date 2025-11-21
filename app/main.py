@@ -56,6 +56,24 @@ from app.multimodal import (
     multimodal_indexer
 )
 
+# Learning/Feedback imports (Phase 5)
+from app.learning.feedback_models import (
+    ExplicitFeedbackRequest,
+    ImplicitFeedbackRequest,
+    CorrectionFeedbackRequest,
+    SessionFeedbackResponse,
+    FeedbackStatsResponse,
+    ExplicitFeedback,
+    ImplicitFeedback,
+    CorrectionFeedback,
+    CorrectionType,
+)
+from app.learning.feedback_store import FeedbackStore
+from app.learning.config import feedback_config
+
+# Global feedback store instance
+feedback_store = FeedbackStore()
+
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 rate_limiter = RateLimiter(max_calls=100, time_window=60)  # 100 calls per minute per IP
@@ -79,6 +97,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize multimodal services (Phase 4)
     await metadata_store.initialize()
+
+    # Initialize feedback store (Phase 5)
+    await feedback_store.initialize()
+    api_logger.info("feedback_store_initialized")
 
     # Initialize hybrid search engine
     try:
@@ -1097,6 +1119,340 @@ async def multimodal_conversation(
         raise HTTPException(500, f"Multimodal conversation failed: {str(e)}")
     finally:
         clear_request_context()
+
+# ============================================================================
+# FEEDBACK COLLECTION ENDPOINTS (Phase 5)
+# ============================================================================
+
+@app.post("/api/feedback/explicit")
+@limiter.limit("60/minute")
+async def submit_explicit_feedback(
+    request: ExplicitFeedbackRequest,
+    http_request: Request
+) -> Dict:
+    """
+    Submit explicit user feedback (ratings and comments).
+
+    PATTERN: User-initiated feedback collection
+    WHY: Direct signal of user satisfaction
+
+    Parameters:
+    - session_id: Session identifier
+    - exchange_id: Exchange/turn identifier
+    - rating: Rating from 1-5 stars
+    - helpful: Whether the response was helpful
+    - comment: Optional user comment
+
+    Returns:
+    - feedback_id: Generated feedback identifier
+    - status: Success status
+
+    Rate Limit: 60 requests per minute
+    """
+    try:
+        api_logger.info(
+            "explicit_feedback_received",
+            session_id=request.session_id,
+            exchange_id=request.exchange_id,
+            rating=request.rating,
+            helpful=request.helpful
+        )
+
+        feedback = ExplicitFeedback(
+            session_id=request.session_id,
+            exchange_id=request.exchange_id,
+            rating=request.rating,
+            helpful=request.helpful,
+            comment=request.comment
+        )
+
+        feedback_id = await feedback_store.save_explicit(feedback)
+
+        api_logger.info(
+            "explicit_feedback_saved",
+            feedback_id=feedback_id,
+            session_id=request.session_id
+        )
+
+        return {
+            "status": "success",
+            "feedback_id": feedback_id,
+            "message": "Feedback submitted successfully"
+        }
+
+    except Exception as e:
+        api_logger.error(
+            "explicit_feedback_error",
+            session_id=request.session_id,
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(500, f"Failed to submit feedback: {str(e)}")
+
+
+@app.post("/api/feedback/implicit")
+@limiter.limit("120/minute")
+async def track_implicit_feedback(
+    request: ImplicitFeedbackRequest,
+    http_request: Request
+) -> Dict:
+    """
+    Track implicit engagement metrics.
+
+    PATTERN: Automatic engagement tracking
+    WHY: Non-intrusive feedback collection
+
+    Parameters:
+    - session_id: Session identifier
+    - response_time_ms: Agent response time in milliseconds
+    - user_response_time_ms: Time until user's next message
+    - follow_up_count: Number of follow-up questions
+    - engagement_duration_seconds: Total engagement time
+    - copy_action: Whether user copied text
+    - share_action: Whether user shared the response
+    - scroll_depth: How far user scrolled (0-1)
+
+    Returns:
+    - feedback_id: Generated feedback identifier
+    - engagement_score: Computed engagement score
+
+    Rate Limit: 120 requests per minute
+    """
+    try:
+        feedback = ImplicitFeedback(
+            session_id=request.session_id,
+            response_time_ms=request.response_time_ms,
+            user_response_time_ms=request.user_response_time_ms,
+            engagement_duration_seconds=request.engagement_duration_seconds,
+            follow_up_count=request.follow_up_count,
+            scroll_depth=request.scroll_depth,
+            copy_action=request.copy_action,
+            share_action=request.share_action
+        )
+
+        feedback_id = await feedback_store.save_implicit(feedback)
+
+        api_logger.debug(
+            "implicit_feedback_tracked",
+            feedback_id=feedback_id,
+            session_id=request.session_id,
+            engagement_score=feedback.engagement_score
+        )
+
+        return {
+            "status": "success",
+            "feedback_id": feedback_id,
+            "engagement_score": feedback.engagement_score
+        }
+
+    except Exception as e:
+        api_logger.error(
+            "implicit_feedback_error",
+            session_id=request.session_id,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to track engagement: {str(e)}")
+
+
+@app.post("/api/feedback/correction")
+@limiter.limit("30/minute")
+async def log_correction(
+    request: CorrectionFeedbackRequest,
+    http_request: Request
+) -> Dict:
+    """
+    Log a user correction.
+
+    PATTERN: Learning from user corrections
+    WHY: Identify misunderstandings and improve responses
+
+    Parameters:
+    - session_id: Session identifier
+    - original_text: Original text before correction
+    - corrected_text: Corrected/rephrased text
+    - correction_type: Type of correction (optional, auto-detected)
+    - context: Optional context around the correction
+
+    Returns:
+    - correction_id: Generated correction identifier
+    - correction_type: Detected correction type
+    - edit_distance_ratio: Edit distance as ratio
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        # Compute edit distance
+        def compute_edit_distance(s1: str, s2: str) -> int:
+            if len(s1) < len(s2):
+                return compute_edit_distance(s2, s1)
+            if len(s2) == 0:
+                return len(s1)
+            previous_row = range(len(s2) + 1)
+            for i, c1 in enumerate(s1):
+                current_row = [i + 1]
+                for j, c2 in enumerate(s2):
+                    insertions = previous_row[j + 1] + 1
+                    deletions = current_row[j] + 1
+                    substitutions = previous_row[j] + (c1 != c2)
+                    current_row.append(min(insertions, deletions, substitutions))
+                previous_row = current_row
+            return previous_row[-1]
+
+        edit_distance = compute_edit_distance(
+            request.original_text,
+            request.corrected_text
+        )
+        edit_distance_ratio = edit_distance / max(len(request.original_text), 1)
+
+        # Auto-detect correction type if not provided
+        correction_type = request.correction_type
+        if correction_type is None:
+            if edit_distance_ratio < 0.1:
+                correction_type = CorrectionType.SPELLING
+            elif edit_distance_ratio < 0.3:
+                correction_type = CorrectionType.GRAMMAR
+            elif len(request.corrected_text) > len(request.original_text) * 1.5:
+                correction_type = CorrectionType.ELABORATION
+            else:
+                correction_type = CorrectionType.REPHRASE
+
+        correction = CorrectionFeedback(
+            session_id=request.session_id,
+            original_text=request.original_text,
+            corrected_text=request.corrected_text,
+            correction_type=correction_type,
+            edit_distance=edit_distance,
+            edit_distance_ratio=edit_distance_ratio,
+            context=request.context
+        )
+
+        correction_id = await feedback_store.save_correction(correction)
+
+        api_logger.info(
+            "correction_logged",
+            correction_id=correction_id,
+            session_id=request.session_id,
+            correction_type=correction_type.value,
+            edit_distance_ratio=round(edit_distance_ratio, 3)
+        )
+
+        return {
+            "status": "success",
+            "correction_id": correction_id,
+            "correction_type": correction_type.value,
+            "edit_distance_ratio": round(edit_distance_ratio, 3)
+        }
+
+    except ValueError as e:
+        api_logger.warning(
+            "correction_validation_error",
+            session_id=request.session_id,
+            error=str(e)
+        )
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        api_logger.error(
+            "correction_error",
+            session_id=request.session_id,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to log correction: {str(e)}")
+
+
+@app.get("/api/feedback/session/{session_id}")
+@limiter.limit("30/minute")
+async def get_session_feedback(
+    session_id: str,
+    http_request: Request
+) -> SessionFeedbackResponse:
+    """
+    Get aggregated feedback for a session.
+
+    PATTERN: Session-level feedback aggregation
+    WHY: Understand overall conversation quality
+
+    Parameters:
+    - session_id: Session identifier
+
+    Returns:
+    - Session feedback summary with explicit items and corrections
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info(
+            "session_feedback_requested",
+            session_id=session_id
+        )
+
+        # Get aggregated feedback
+        session_feedback = await feedback_store.get_session_feedback(session_id)
+
+        # Get detailed items
+        explicit_items = await feedback_store.get_explicit_by_session(session_id, limit=50)
+        correction_items = await feedback_store.get_corrections_by_session(session_id, limit=50)
+
+        return SessionFeedbackResponse(
+            session_id=session_id,
+            feedback=session_feedback,
+            explicit_items=explicit_items,
+            correction_items=correction_items
+        )
+
+    except Exception as e:
+        api_logger.error(
+            "session_feedback_error",
+            session_id=session_id,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get session feedback: {str(e)}")
+
+
+@app.get("/api/feedback/stats")
+@limiter.limit("10/minute")
+async def get_feedback_stats(
+    hours: int = 24,
+    http_request: Request = None
+) -> FeedbackStatsResponse:
+    """
+    Get aggregate feedback statistics.
+
+    PATTERN: System-wide metrics aggregation
+    WHY: Monitor overall system performance and user satisfaction
+
+    Parameters:
+    - hours: Time range in hours (default: 24)
+
+    Returns:
+    - Aggregate feedback statistics
+
+    Rate Limit: 10 requests per minute
+    """
+    try:
+        api_logger.info(
+            "feedback_stats_requested",
+            hours=hours
+        )
+
+        from datetime import timedelta
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=hours)
+
+        stats = await feedback_store.get_aggregate_stats(start_time, end_time)
+
+        return FeedbackStatsResponse(
+            stats=stats,
+            cache_ttl_seconds=60
+        )
+
+    except Exception as e:
+        api_logger.error(
+            "feedback_stats_error",
+            hours=hours,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get feedback stats: {str(e)}")
+
 
 # Setup Twilio routes
 setup_twilio_routes(app)
