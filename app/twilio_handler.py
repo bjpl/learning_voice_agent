@@ -35,6 +35,7 @@ from app.conversation_handler import conversation_handler
 from app.state_manager import state_manager
 from app.database import db
 from app.audio_pipeline import audio_pipeline
+from app.logger import twilio_logger, set_request_context, clear_request_context
 
 router = APIRouter(prefix="/twilio", tags=["twilio"])
 
@@ -195,20 +196,31 @@ async def process_speech(
         )
         return Response(content=response_xml, media_type="application/xml")
     
+    # Set request context for tracing
+    set_request_context(session_id=session_id, endpoint="/twilio/process-speech")
+
     try:
+        twilio_logger.info(
+            "twilio_speech_received",
+            session_id=session_id,
+            confidence=confidence,
+            speech_length=len(speech_result)
+        )
+
         # Get conversation context
         context = await state_manager.get_conversation_context(session_id)
-        
+
         # Generate response using Claude
         agent_response = await conversation_handler.generate_response(
             speech_result,
             context
         )
-        
+
         # Detect if conversation should end
         intent = conversation_handler.detect_intent(speech_result)
-        
+
         if intent == "end_conversation":
+            twilio_logger.info("twilio_call_ending", session_id=session_id)
             # Create summary and end call
             summary = conversation_handler.create_summary(context)
             response_xml = twilio_handler.create_say_response(
@@ -222,7 +234,7 @@ async def process_speech(
                 session_id,
                 timeout=5  # Longer timeout for thoughtful responses
             )
-        
+
         # Save exchange in background
         background_tasks.add_task(
             save_twilio_exchange,
@@ -230,13 +242,27 @@ async def process_speech(
             speech_result,
             agent_response
         )
-        
+
+        twilio_logger.info(
+            "twilio_response_generated",
+            session_id=session_id,
+            intent=intent
+        )
+
     except Exception as e:
-        print(f"Error processing speech: {e}")
+        twilio_logger.error(
+            "twilio_speech_processing_error",
+            session_id=session_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True
+        )
         response_xml = twilio_handler.create_gather_response(
             "I had trouble processing that. Let's try again.",
             session_id
         )
+    finally:
+        clear_request_context()
     
     return Response(content=response_xml, media_type="application/xml")
 
