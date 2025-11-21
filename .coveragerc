@@ -1,0 +1,43 @@
+# Coverage.py Configuration
+
+[run]
+source = app
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */site-packages/*
+    */venv/*
+    */migrations/*
+    app/__init__.py
+
+branch = True
+parallel = True
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+exclude_lines =
+    # Pragmas
+    pragma: no cover
+    # Debug statements
+    def __repr__
+    def __str__
+    # Abstract methods
+    raise NotImplementedError
+    # Defensive programming
+    raise AssertionError
+    # Main blocks
+    if __name__ == .__main__.:
+    # Type checking blocks
+    if TYPE_CHECKING:
+    # Ellipsis
+    \.\.\.
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

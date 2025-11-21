@@ -1,0 +1,106 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  test-before-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Start Redis
+        uses: supercharge/redis-github-action@1.8.0
+        with:
+          redis-version: 7
+
+      - name: Run critical tests
+        run: |
+          pytest tests/ -v --maxfail=1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_STAGING || 'test-key' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_STAGING || 'test-key' }}
+          REDIS_URL: redis://localhost:6379
+
+  deploy-staging:
+    needs: test-before-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://${{ secrets.RAILWAY_STAGING_DOMAIN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          npm install -g @railway/cli
+
+      - name: Deploy to Railway Staging
+        run: |
+          railway link ${{ secrets.RAILWAY_STAGING_PROJECT_ID }}
+          railway up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Run smoke tests
+        run: |
+          curl -f https://${{ secrets.RAILWAY_STAGING_DOMAIN }}/health || exit 1
+          curl -f https://${{ secrets.RAILWAY_STAGING_DOMAIN }}/api/stats || exit 1
+        continue-on-error: true
+
+      - name: Notify deployment success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "✅ Staging deployment successful",
+              attachments: [{
+                color: 'good',
+                text: `Deployed ${process.env.GITHUB_SHA.substring(0, 7)} to staging\nBranch: ${process.env.GITHUB_REF}\nURL: https://${{ secrets.RAILWAY_STAGING_DOMAIN }}`
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "❌ Staging deployment failed",
+              attachments: [{
+                color: 'danger',
+                text: `Failed to deploy ${process.env.GITHUB_SHA.substring(0, 7)}\nBranch: ${process.env.GITHUB_REF}`
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

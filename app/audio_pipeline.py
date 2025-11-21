@@ -34,6 +34,8 @@ from openai import AsyncOpenAI
 from dataclasses import dataclass
 from enum import Enum
 from app.config import settings
+from app.resilience import with_timeout, with_retry, FallbackHandler
+from app.logger import audio_logger
 
 class AudioFormat(Enum):
     WAV = "wav"
@@ -68,16 +70,27 @@ class WhisperStrategy(TranscriptionStrategy):
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         
+    @with_timeout(15)
+    @with_retry(max_attempts=2, initial_wait=2.0)
     async def transcribe(self, audio: AudioData) -> str:
         """
         CONCEPT: Direct API call with minimal processing
         WHY: Whisper handles most formats natively
+        RESILIENCE: Retry up to 2 times with 15s timeout
         """
         # Create file-like object for API
         audio_file = io.BytesIO(audio.content)
         audio_file.name = f"audio.{audio.format.value}"
-        
+
         try:
+            audio_logger.debug(
+                "calling_whisper_api",
+                model=settings.whisper_model,
+                audio_format=audio.format.value,
+                audio_size_bytes=len(audio.content),
+                source=audio.source
+            )
+
             # Call Whisper API
             transcript = await self.client.audio.transcriptions.create(
                 model=settings.whisper_model,
@@ -85,12 +98,37 @@ class WhisperStrategy(TranscriptionStrategy):
                 response_format="text",
                 language="en"  # Optimize for English
             )
-            
-            return transcript.strip()
-            
+
+            result = transcript.strip()
+
+            audio_logger.info(
+                "whisper_transcription_success",
+                transcript_length=len(result),
+                audio_format=audio.format.value,
+                source=audio.source
+            )
+
+            return result
+
+        except TimeoutError as e:
+            audio_logger.error(
+                "whisper_api_timeout",
+                timeout_seconds=15,
+                audio_format=audio.format.value,
+                audio_size=len(audio.content),
+                error=str(e)
+            )
+            raise ValueError("Audio transcription is taking too long. Please try with shorter audio.")
         except Exception as e:
-            print(f"Whisper transcription error: {e}")
-            raise
+            audio_logger.error(
+                "whisper_transcription_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                audio_format=audio.format.value,
+                audio_size=len(audio.content),
+                exc_info=True
+            )
+            raise ValueError(f"Could not transcribe audio: {str(e)}")
 
 class AudioPipeline:
     """
@@ -144,29 +182,45 @@ class AudioPipeline:
         """
         PATTERN: Main entry point with automatic format detection
         WHY: Simple interface hiding complexity
+        RESILIENCE: Graceful fallback on transcription failures
         """
         # Detect or use provided format
         if format_hint:
             audio_format = AudioFormat(format_hint.lower())
         else:
             audio_format = self._detect_format(audio_bytes)
-        
+
         # Create audio data object
         audio = AudioData(
             content=audio_bytes,
             format=audio_format,
             source=source
         )
-        
+
         # Validate
         self._validate_audio(audio)
-        
-        # Transcribe
-        text = await self.transcription_strategy.transcribe(audio)
-        
+
+        # Transcribe with fallback
+        try:
+            text = await self.transcription_strategy.transcribe(audio)
+        except ValueError as e:
+            # Re-raise validation errors
+            raise
+        except Exception as e:
+            audio_logger.error(
+                "transcription_fallback_triggered",
+                source=source,
+                audio_format=audio.format.value,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
+            )
+            # Return error message as fallback
+            return "[Audio could not be transcribed. Please try again or speak more clearly.]"
+
         # Post-process
         text = self._clean_transcript(text)
-        
+
         return text
     
     async def transcribe_base64(

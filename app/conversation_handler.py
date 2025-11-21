@@ -30,6 +30,15 @@ from typing import List, Dict, Optional
 import anthropic
 from app.config import settings
 import re
+import time
+from app.resilience import (
+    with_circuit_breaker,
+    with_timeout,
+    with_retry,
+    FallbackHandler
+)
+from circuitbreaker import CircuitBreakerError
+from app.logger import conversation_logger
 
 class ConversationHandler:
     def __init__(self):
@@ -94,6 +103,45 @@ Special behaviors:
         
         return is_short_input and not has_question and not is_ending
     
+    @with_circuit_breaker(failure_threshold=3, recovery_timeout=60)
+    @with_timeout(10)
+    @with_retry(max_attempts=3, initial_wait=1.0)
+    async def _call_claude_api(
+        self,
+        user_message: str
+    ) -> str:
+        """
+        PATTERN: Resilient API call with circuit breaker
+        WHY: Prevent cascading failures and retry transient errors
+        """
+        conversation_logger.debug(
+            "calling_claude_api",
+            model=settings.claude_model,
+            max_tokens=settings.claude_max_tokens
+        )
+
+        message = await self.client.messages.create(
+            model=settings.claude_model,
+            max_tokens=settings.claude_max_tokens,
+            temperature=settings.claude_temperature,
+            system=self.system_prompt,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+
+        response_text = message.content[0].text.strip()
+
+        conversation_logger.info(
+            "claude_response_received",
+            response_length=len(response_text),
+            tokens_used=message.usage.input_tokens + message.usage.output_tokens,
+            input_tokens=message.usage.input_tokens,
+            output_tokens=message.usage.output_tokens
+        )
+
+        return response_text
+
     async def generate_response(
         self,
         user_text: str,
@@ -107,23 +155,13 @@ Special behaviors:
         try:
             # Format the context
             context_str = self._format_context(context)
-            
+
             # Build the user message
             user_message = f"{context_str}\n\nUser just said: {user_text}\n\nRespond naturally and help them capture their learning effectively."
-            
-            # Call Claude API
-            message = await self.client.messages.create(
-                model=settings.claude_model,
-                max_tokens=settings.claude_max_tokens,
-                temperature=settings.claude_temperature,
-                system=self.system_prompt,
-                messages=[
-                    {"role": "user", "content": user_message}
-                ]
-            )
-            
-            response = message.content[0].text.strip()
-            
+
+            # Call Claude API with resilience patterns
+            response = await self._call_claude_api(user_message)
+
             # Add follow-up if needed
             if self._should_add_followup(user_text, response):
                 followups = [
@@ -134,17 +172,48 @@ Special behaviors:
                     "How does that relate to what you're learning?"
                 ]
                 import random
-                response += f" {random.choice(followups)}"
-            
+                selected_followup = random.choice(followups)
+                response += f" {selected_followup}"
+                conversation_logger.debug("followup_question_added", followup=selected_followup)
+
             return response
-            
-        except anthropic.RateLimitError:
+
+        except CircuitBreakerError as e:
+            conversation_logger.warning(
+                "circuit_breaker_open",
+                error=str(e),
+                service="claude_api"
+            )
+            return "I'm experiencing high load right now. Could you try again in a moment?"
+        except TimeoutError as e:
+            conversation_logger.error(
+                "claude_api_timeout",
+                error=str(e),
+                timeout_seconds=10
+            )
+            return "That's taking longer than expected. Could you try asking again?"
+        except anthropic.RateLimitError as e:
+            conversation_logger.warning(
+                "claude_rate_limit_exceeded",
+                error=str(e),
+                retry_after=getattr(e, 'retry_after', None)
+            )
             return "I need a moment to catch up. Could you repeat that?"
         except anthropic.APIError as e:
-            print(f"Claude API error: {e}")
+            conversation_logger.error(
+                "claude_api_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
+            )
             return "I'm having trouble connecting right now. Let's try again - what were you saying?"
         except Exception as e:
-            print(f"Unexpected error in conversation handler: {e}")
+            conversation_logger.error(
+                "conversation_handler_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True
+            )
             return "Something went wrong on my end. Could you say that again?"
     
     def detect_intent(self, text: str) -> str:
