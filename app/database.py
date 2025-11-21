@@ -1,5 +1,5 @@
 """
-Database Layer with SQLite and FTS5
+Database Layer with SQLite and FTS5 + Vector Search
 PATTERN: Repository pattern with async operations
 WHY: Separation of concerns and testability
 RESILIENCE: Transaction retry and rollback on failures
@@ -11,24 +11,27 @@ from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
 from app.resilience import with_retry
 from app.logger import db_logger
+from app.vector import VectorStore, vector_store
 
 class Database:
-    def __init__(self, db_path: str = "learning_captures.db"):
+    def __init__(self, db_path: str = "learning_captures.db", enable_vector: bool = True):
         self.db_path = db_path
+        self.enable_vector = enable_vector
+        self.vector_store: Optional[VectorStore] = None
         self._initialized = False
     
     @with_retry(max_attempts=3, initial_wait=0.5)
     async def initialize(self):
         """
-        CONCEPT: Lazy initialization with FTS5 virtual table
-        WHY: Efficient full-text search without external dependencies
+        CONCEPT: Lazy initialization with FTS5 virtual table + vector store
+        WHY: Efficient full-text search without external dependencies + semantic search
         RESILIENCE: Retry up to 3 times on initialization failures
         """
         if self._initialized:
             return
 
         try:
-            db_logger.info("database_initialization_started", db_path=self.db_path)
+            db_logger.info("database_initialization_started", db_path=self.db_path, vector_enabled=self.enable_vector)
 
             async with aiosqlite.connect(self.db_path) as db:
                 # Main captures table

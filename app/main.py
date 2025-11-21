@@ -23,7 +23,9 @@ from app.models import (
     ConversationRequest,
     ConversationResponse,
     SearchRequest,
-    SearchResponse
+    SearchResponse,
+    HybridSearchRequest,
+    HybridSearchResponse
 )
 from app.twilio_handler import setup_twilio_routes
 from app.logger import api_logger, set_request_context, clear_request_context
@@ -35,6 +37,8 @@ from app.metrics import (
     track_in_progress
 )
 from app.resilience import RateLimiter, HealthCheck
+from app.search import create_hybrid_search_engine, SearchStrategy
+from app.search.vector_store import vector_store as search_vector_store
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -43,17 +47,43 @@ from slowapi.errors import RateLimitExceeded
 limiter = Limiter(key_func=get_remote_address)
 rate_limiter = RateLimiter(max_calls=100, time_window=60)  # 100 calls per minute per IP
 
+# Global hybrid search engine
+hybrid_search_engine = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     PATTERN: Application lifecycle management
     WHY: Proper initialization and cleanup
     """
+    global hybrid_search_engine
+
     # Startup
     api_logger.info("application_startup_initiated")
     app.state.startup_time = time.time()
     await db.initialize()
     await state_manager.initialize()
+
+    # Initialize hybrid search engine
+    try:
+        api_logger.info("hybrid_search_initialization_started")
+        await search_vector_store.initialize()
+        hybrid_search_engine = create_hybrid_search_engine(db)
+
+        # Set OpenAI client for embeddings if available
+        if settings.openai_api_key:
+            from openai import AsyncOpenAI
+            openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+            hybrid_search_engine.set_embedding_client(openai_client)
+            api_logger.info("hybrid_search_initialized", embedding_enabled=True)
+        else:
+            api_logger.warning("hybrid_search_initialized", embedding_enabled=False,
+                             message="OpenAI API key not configured - semantic search unavailable")
+    except Exception as e:
+        api_logger.error("hybrid_search_initialization_failed", error=str(e), exc_info=True)
+        # Continue without hybrid search
+        hybrid_search_engine = None
+
     api_logger.info("application_ready", status="operational")
 
     yield
@@ -170,6 +200,7 @@ async def root():
             "websocket": "/ws/{session_id}",
             "twilio": "/twilio/voice",
             "search": "/api/search",
+            "hybrid_search": "/api/search/hybrid",
             "stats": "/api/stats",
             "metrics": "/metrics",
             "health": "/api/health",
@@ -372,15 +403,49 @@ async def update_conversation_state(
         user_text,
         agent_text
     )
-    
+
     # Save to database
-    await db.save_exchange(
+    capture_id = await db.save_exchange(
         session_id,
         user_text,
         agent_text,
         metadata={"source": "api"}
     )
-    
+
+    # Generate and store embedding for semantic search (if available)
+    if hybrid_search_engine and hybrid_search_engine._embedding_client:
+        try:
+            # Combine user and agent text for embedding
+            combined_text = f"User: {user_text}\nAgent: {agent_text}"
+
+            # Generate embedding
+            response = await hybrid_search_engine._embedding_client.embeddings.create(
+                input=combined_text,
+                model="text-embedding-ada-002"
+            )
+            import numpy as np
+            embedding = np.array(response.data[0].embedding, dtype=np.float32)
+
+            # Store in vector store
+            await search_vector_store.add_embedding(
+                capture_id=capture_id,
+                embedding=embedding,
+                model="text-embedding-ada-002"
+            )
+
+            api_logger.debug(
+                "embedding_generated",
+                capture_id=capture_id,
+                session_id=session_id
+            )
+        except Exception as e:
+            # Don't fail conversation if embedding generation fails
+            api_logger.warning(
+                "embedding_generation_failed",
+                capture_id=capture_id,
+                error=str(e)
+            )
+
     # Update session metadata
     metadata = await state_manager.get_session_metadata(session_id) or {
         "created_at": datetime.utcnow().isoformat(),
@@ -490,17 +555,85 @@ async def search_captures(request: SearchRequest, http_request: Request) -> Sear
     """
     PATTERN: FTS5 search endpoint
     WHY: Fast, relevant search across all captures
+    NOTE: For advanced semantic search, use /api/search/hybrid
     """
     results = await db.search_captures(
         request.query,
         request.limit
     )
-    
+
     return SearchResponse(
         query=request.query,
         results=results,
         count=len(results)
     )
+
+@app.post("/api/search/hybrid")
+@limiter.limit("30/minute")
+async def hybrid_search(request: HybridSearchRequest, http_request: Request) -> HybridSearchResponse:
+    """
+    PATTERN: Hybrid search combining vector similarity and FTS5 keyword search
+    WHY: Best of both worlds - semantic understanding + exact matching
+    ALGORITHM: Reciprocal Rank Fusion (RRF) for result combination
+
+    Search Strategies:
+    - semantic: Pure vector search for conceptual queries
+    - keyword: Pure FTS5 for exact phrase matching
+    - hybrid: Combined search with RRF (balanced)
+    - adaptive: Automatically choose based on query (default)
+
+    Example:
+        POST /api/search/hybrid
+        {
+            "query": "explain machine learning concepts",
+            "strategy": "adaptive",
+            "limit": 10
+        }
+    """
+    if not hybrid_search_engine:
+        api_logger.error("hybrid_search_unavailable", query=request.query)
+        raise HTTPException(
+            status_code=503,
+            detail="Hybrid search is not available. Please use /api/search endpoint."
+        )
+
+    try:
+        # Map strategy string to enum
+        strategy = None
+        if request.strategy:
+            try:
+                strategy = SearchStrategy(request.strategy)
+            except ValueError:
+                raise HTTPException(400, f"Invalid strategy: {request.strategy}")
+
+        # Execute hybrid search
+        response = await hybrid_search_engine.search(
+            query=request.query,
+            strategy=strategy,
+            limit=request.limit
+        )
+
+        api_logger.info(
+            "hybrid_search_complete",
+            query=request.query,
+            strategy=response.strategy,
+            results_count=response.total_count,
+            execution_time_ms=response.execution_time_ms
+        )
+
+        return HybridSearchResponse(**response.__dict__)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_logger.error(
+            "hybrid_search_failed",
+            query=request.query,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True
+        )
+        raise HTTPException(500, f"Hybrid search failed: {str(e)}")
 
 @app.get("/api/stats")
 async def get_stats() -> Dict:

@@ -55,3 +55,55 @@ class WebSocketMessage(BaseModel):
     audio: Optional[str] = None
     text: Optional[str] = None
     session_id: Optional[str] = None
+
+class HybridSearchRequest(BaseModel):
+    """Request model for hybrid search"""
+    query: str = Field(..., min_length=1, max_length=500, description="Search query")
+    strategy: Optional[str] = Field(
+        None,
+        description="Search strategy: semantic, keyword, hybrid, or adaptive (default)",
+        pattern="^(semantic|keyword|hybrid|adaptive)$"
+    )
+    limit: int = Field(10, ge=1, le=50, description="Maximum results to return")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "query": "explain machine learning concepts",
+                "strategy": "hybrid",
+                "limit": 10
+            }
+        }
+
+class HybridSearchResponse(BaseModel):
+    """Response model for hybrid search"""
+    query: str
+    strategy: str
+    results: List[Dict]
+    total_count: int
+    query_analysis: Dict
+    execution_time_ms: float
+    vector_results_count: int = 0
+    keyword_results_count: int = 0
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "query": "machine learning",
+                "strategy": "hybrid",
+                "results": [
+                    {
+                        "id": 1,
+                        "score": 0.95,
+                        "user_text": "Tell me about machine learning",
+                        "agent_text": "Machine learning is...",
+                        "timestamp": "2025-11-21T10:00:00"
+                    }
+                ],
+                "total_count": 10,
+                "query_analysis": {"intent": "conceptual", "keywords": ["machine", "learning"]},
+                "execution_time_ms": 45.2,
+                "vector_results_count": 8,
+                "keyword_results_count": 6
+            }
+        }
