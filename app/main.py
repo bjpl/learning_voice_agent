@@ -2,7 +2,7 @@
 FastAPI Main Application - Integration Layer
 PATTERN: Dependency injection with lifecycle management
 """
-from fastapi import FastAPI, WebSocket, HTTPException, Depends, BackgroundTasks, Request, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, HTTPException, Depends, BackgroundTasks, Request, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -1452,6 +1452,1077 @@ async def get_feedback_stats(
             error=str(e)
         )
         raise HTTPException(500, f"Failed to get feedback stats: {str(e)}")
+
+
+# ============================================================================
+# ANALYTICS DASHBOARD ENDPOINTS (Phase 6)
+# ============================================================================
+
+# Import analytics components
+from app.analytics.dashboard_service import dashboard_service, DashboardService
+from app.analytics.dashboard_models import (
+    OverviewResponse,
+    ProgressChartResponse,
+    TrendChartResponse,
+    TopicBreakdownResponse,
+    ActivityHeatmapResponse,
+    GoalProgressResponse,
+    InsightResponse,
+    ExportResponse,
+    ExportFormat,
+    PeriodType,
+)
+from app.analytics.chart_data import ChartJSData
+
+
+@app.get("/api/analytics/overview")
+@limiter.limit("30/minute")
+async def get_analytics_overview(
+    http_request: Request
+) -> OverviewResponse:
+    """
+    Get main dashboard overview data.
+
+    PATTERN: Aggregated KPI dashboard
+    WHY: Single call for landing page data
+
+    Returns:
+    - Overview cards with key metrics
+    - Quick stats summary
+    - Recent insights
+    - Streak information
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("analytics_overview_requested")
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_overview_data()
+
+        api_logger.info(
+            "analytics_overview_generated",
+            cards_count=len(response.cards)
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_overview_error",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(500, f"Failed to get analytics overview: {str(e)}")
+
+
+@app.get("/api/analytics/progress")
+@limiter.limit("30/minute")
+async def get_analytics_progress(
+    period: str = Query("week", regex="^(week|month|year)$"),
+    http_request: Request = None
+) -> ProgressChartResponse:
+    """
+    Get progress visualization data.
+
+    PATTERN: Time-series progress data
+    WHY: Track learning progress over time
+
+    Parameters:
+    - period: Time period (week, month, year)
+
+    Returns:
+    - Progress data points with sessions, exchanges, quality
+    - Summary statistics
+    - Chart configuration hints
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("analytics_progress_requested", period=period)
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_progress_charts(period)
+
+        api_logger.info(
+            "analytics_progress_generated",
+            period=period,
+            data_points=len(response.data_points)
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_progress_error",
+            period=period,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get progress data: {str(e)}")
+
+
+@app.get("/api/analytics/trends")
+@limiter.limit("30/minute")
+async def get_analytics_trends(
+    metrics: str = Query("quality,engagement", description="Comma-separated metrics"),
+    days: int = Query(30, ge=7, le=365, description="Number of days to analyze"),
+    http_request: Request = None
+) -> TrendChartResponse:
+    """
+    Get trend data for specified metrics.
+
+    PATTERN: Multi-metric trend comparison
+    WHY: Compare trends across different metrics
+
+    Parameters:
+    - metrics: Comma-separated list (quality, engagement, sessions, duration, positive_rate)
+    - days: Number of days to analyze (7-365)
+
+    Returns:
+    - Trend data for each requested metric
+    - Direction and change percentage
+    - Chart-ready data
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        metric_list = [m.strip() for m in metrics.split(",")]
+        api_logger.info(
+            "analytics_trends_requested",
+            metrics=metric_list,
+            days=days
+        )
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_trend_charts(metric_list, days)
+
+        api_logger.info(
+            "analytics_trends_generated",
+            metrics_count=len(response.metrics),
+            days=days
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_trends_error",
+            metrics=metrics,
+            days=days,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get trend data: {str(e)}")
+
+
+@app.get("/api/analytics/topics")
+@limiter.limit("30/minute")
+async def get_analytics_topics(
+    days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
+    http_request: Request = None
+) -> TopicBreakdownResponse:
+    """
+    Get topic analytics and distribution.
+
+    PATTERN: Categorical analytics with quality correlation
+    WHY: Understand content distribution and performance by topic
+
+    Parameters:
+    - days: Number of days to analyze (1-365)
+
+    Returns:
+    - Topic statistics with session counts and quality
+    - Top and emerging topics
+    - Pie chart data
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("analytics_topics_requested", days=days)
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_topic_breakdown(days)
+
+        api_logger.info(
+            "analytics_topics_generated",
+            total_topics=response.total_topics
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_topics_error",
+            days=days,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get topic analytics: {str(e)}")
+
+
+@app.get("/api/analytics/activity")
+@limiter.limit("30/minute")
+async def get_analytics_activity(
+    year: int = Query(None, ge=2020, le=2030, description="Year for heatmap"),
+    http_request: Request = None
+) -> ActivityHeatmapResponse:
+    """
+    Get activity heatmap data (GitHub-style calendar).
+
+    PATTERN: Calendar heatmap visualization
+    WHY: Show activity patterns over the year
+
+    Parameters:
+    - year: Year to generate heatmap for (defaults to current year)
+
+    Returns:
+    - Weekly activity cells with intensity levels
+    - Total active days and sessions
+    - Month labels for display
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        if year is None:
+            year = date.today().year
+
+        api_logger.info("analytics_activity_requested", year=year)
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_activity_heatmap(year)
+
+        api_logger.info(
+            "analytics_activity_generated",
+            year=year,
+            active_days=response.total_active_days
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_activity_error",
+            year=year,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get activity heatmap: {str(e)}")
+
+
+@app.get("/api/analytics/goals")
+@limiter.limit("30/minute")
+async def get_analytics_goals(
+    http_request: Request
+) -> GoalProgressResponse:
+    """
+    Get goal progress tracking data.
+
+    PATTERN: Goal progress tracking
+    WHY: Track learning objectives and milestones
+
+    Returns:
+    - Active and completed goals
+    - Completion rate
+    - Next milestone information
+    - Suggested goals
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("analytics_goals_requested")
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_goal_progress()
+
+        api_logger.info(
+            "analytics_goals_generated",
+            active=len(response.active_goals),
+            completed=len(response.completed_goals)
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_goals_error",
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get goal progress: {str(e)}")
+
+
+@app.get("/api/analytics/insights")
+@limiter.limit("30/minute")
+async def get_analytics_insights(
+    limit: int = Query(10, ge=1, le=100, description="Maximum insights to return"),
+    http_request: Request = None
+) -> InsightResponse:
+    """
+    Get recent insights and recommendations.
+
+    PATTERN: Prioritized insights list
+    WHY: Surface actionable intelligence
+
+    Parameters:
+    - limit: Maximum number of insights (1-100)
+
+    Returns:
+    - Insights list with priority and category
+    - Category distribution
+    - Critical insight indicator
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("analytics_insights_requested", limit=limit)
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.get_insights(limit)
+
+        api_logger.info(
+            "analytics_insights_generated",
+            count=response.total_insights
+        )
+
+        return response
+
+    except Exception as e:
+        api_logger.error(
+            "analytics_insights_error",
+            limit=limit,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to get insights: {str(e)}")
+
+
+@app.get("/api/analytics/export")
+@limiter.limit("5/minute")
+async def export_analytics_data(
+    format: str = Query("json", regex="^(json|csv|pdf)$"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    http_request: Request = None
+) -> ExportResponse:
+    """
+    Export analytics data.
+
+    PATTERN: Data export with format options
+    WHY: Enable data portability and offline analysis
+
+    Parameters:
+    - format: Export format (json, csv, pdf)
+    - start_date: Start of export range (YYYY-MM-DD)
+    - end_date: End of export range (YYYY-MM-DD)
+
+    Returns:
+    - Export data or download URL
+    - Record count
+    - Date range info
+
+    Rate Limit: 5 requests per minute
+    """
+    try:
+        api_logger.info(
+            "analytics_export_requested",
+            format=format,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        # Parse dates
+        parsed_start = None
+        parsed_end = None
+        if start_date:
+            parsed_start = date.fromisoformat(start_date)
+        if end_date:
+            parsed_end = date.fromisoformat(end_date)
+
+        export_format = ExportFormat(format)
+
+        await dashboard_service.initialize()
+        response = await dashboard_service.export_data(
+            format=export_format,
+            start_date=parsed_start,
+            end_date=parsed_end
+        )
+
+        api_logger.info(
+            "analytics_export_generated",
+            format=format,
+            records=response.record_count
+        )
+
+        return response
+
+    except ValueError as e:
+        api_logger.warning("analytics_export_validation_error", error=str(e))
+        raise HTTPException(400, f"Invalid date format: {str(e)}")
+    except Exception as e:
+        api_logger.error(
+            "analytics_export_error",
+            format=format,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to export data: {str(e)}")
+
+
+# ============================================================================
+# GOAL TRACKING ENDPOINTS (Phase 6)
+# ============================================================================
+
+# Import goal tracking components
+from app.analytics.goal_tracker import goal_tracker, ProgressMetrics
+from app.analytics.goal_models import (
+    Goal, GoalType, GoalStatus,
+    Achievement, GoalSuggestion,
+    CreateGoalRequest, UpdateGoalRequest,
+    GoalResponse, GoalListResponse, AchievementListResponse,
+)
+from app.analytics.achievement_system import achievement_system
+from app.analytics.export_service import (
+    export_service,
+    ExportFormat as GoalExportFormat,
+    ReportPeriod
+)
+
+
+@app.post("/api/goals")
+@limiter.limit("30/minute")
+async def create_goal(
+    request: CreateGoalRequest,
+    http_request: Request
+) -> GoalResponse:
+    """
+    Create a new learning goal.
+
+    PATTERN: Goal-based gamification
+    WHY: Motivate learners with measurable objectives
+
+    Parameters:
+    - title: Goal title
+    - description: Optional description
+    - goal_type: Type (streak, sessions, topics, quality, exchanges, custom)
+    - target_value: Target value to achieve
+    - unit: Unit of measurement
+    - deadline: Optional deadline (YYYY-MM-DD)
+
+    Returns:
+    - Created goal with auto-generated milestones
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info(
+            "goal_creation_requested",
+            title=request.title,
+            goal_type=request.goal_type.value
+        )
+
+        await goal_tracker.initialize()
+        goal = await goal_tracker.create_goal_from_request(request)
+
+        api_logger.info(
+            "goal_created",
+            goal_id=goal.id,
+            title=goal.title,
+            goal_type=goal.goal_type.value
+        )
+
+        return GoalResponse(
+            goal=goal,
+            recently_completed_milestones=[],
+            new_achievements=[]
+        )
+
+    except ValueError as e:
+        api_logger.warning("goal_creation_validation_error", error=str(e))
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        api_logger.error(
+            "goal_creation_error",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        raise HTTPException(500, f"Failed to create goal: {str(e)}")
+
+
+@app.get("/api/goals")
+@limiter.limit("30/minute")
+async def list_goals(
+    status: Optional[str] = Query(None, regex="^(active|completed|paused|abandoned|expired)$"),
+    http_request: Request = None
+) -> GoalListResponse:
+    """
+    List all goals or filter by status.
+
+    PATTERN: Filtered goal listing
+    WHY: Track active and historical goals
+
+    Parameters:
+    - status: Optional filter (active, completed, paused, abandoned, expired)
+
+    Returns:
+    - List of goals with counts
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("goals_list_requested", status=status)
+
+        await goal_tracker.initialize()
+
+        if status:
+            goal_status = GoalStatus(status)
+            if goal_status == GoalStatus.ACTIVE:
+                goals = await goal_tracker.get_active_goals()
+            elif goal_status == GoalStatus.COMPLETED:
+                goals = await goal_tracker.get_completed_goals()
+            else:
+                all_goals = await goal_tracker.get_all_goals()
+                goals = [g for g in all_goals if g.status == goal_status]
+        else:
+            goals = await goal_tracker.get_all_goals()
+
+        active_count = len([g for g in goals if g.status == GoalStatus.ACTIVE])
+        completed_count = len([g for g in goals if g.status == GoalStatus.COMPLETED])
+
+        api_logger.info(
+            "goals_listed",
+            total=len(goals),
+            active=active_count,
+            completed=completed_count
+        )
+
+        return GoalListResponse(
+            goals=goals,
+            total_count=len(goals),
+            active_count=active_count,
+            completed_count=completed_count
+        )
+
+    except Exception as e:
+        api_logger.error("goals_list_error", error=str(e))
+        raise HTTPException(500, f"Failed to list goals: {str(e)}")
+
+
+@app.get("/api/goals/suggestions")
+@limiter.limit("10/minute")
+async def get_goal_suggestions(
+    limit: int = Query(5, ge=1, le=10),
+    http_request: Request = None
+) -> Dict:
+    """
+    Get AI-generated goal suggestions.
+
+    PATTERN: Personalized recommendations
+    WHY: Help users set appropriate goals
+
+    Parameters:
+    - limit: Maximum suggestions (1-10)
+
+    Returns:
+    - List of suggested goals with confidence scores
+
+    Rate Limit: 10 requests per minute
+    """
+    try:
+        api_logger.info("goal_suggestions_requested", limit=limit)
+
+        await goal_tracker.initialize()
+
+        # Create sample metrics (in production, fetch from actual data)
+        metrics = ProgressMetrics(
+            current_streak=0,
+            longest_streak=0,
+            total_sessions=0,
+            total_exchanges=0,
+            total_topics=0,
+            avg_quality_score=0.0,
+            total_duration_minutes=0,
+            total_feedback=0
+        )
+
+        suggestions = await goal_tracker.get_goal_suggestions(metrics, limit)
+
+        api_logger.info(
+            "goal_suggestions_generated",
+            count=len(suggestions)
+        )
+
+        return {
+            "suggestions": [s.model_dump() for s in suggestions],
+            "count": len(suggestions)
+        }
+
+    except Exception as e:
+        api_logger.error("goal_suggestions_error", error=str(e))
+        raise HTTPException(500, f"Failed to get suggestions: {str(e)}")
+
+
+@app.get("/api/goals/{goal_id}")
+@limiter.limit("60/minute")
+async def get_goal(
+    goal_id: str,
+    http_request: Request = None
+) -> GoalResponse:
+    """
+    Get a specific goal by ID.
+
+    Parameters:
+    - goal_id: Goal identifier
+
+    Returns:
+    - Goal details with milestones
+
+    Rate Limit: 60 requests per minute
+    """
+    try:
+        api_logger.info("goal_requested", goal_id=goal_id)
+
+        await goal_tracker.initialize()
+        goal = await goal_tracker.get_goal(goal_id)
+
+        if not goal:
+            raise HTTPException(404, f"Goal not found: {goal_id}")
+
+        return GoalResponse(
+            goal=goal,
+            recently_completed_milestones=[],
+            new_achievements=[]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_logger.error("goal_get_error", goal_id=goal_id, error=str(e))
+        raise HTTPException(500, f"Failed to get goal: {str(e)}")
+
+
+@app.put("/api/goals/{goal_id}")
+@limiter.limit("30/minute")
+async def update_goal(
+    goal_id: str,
+    request: UpdateGoalRequest,
+    http_request: Request = None
+) -> GoalResponse:
+    """
+    Update an existing goal.
+
+    Parameters:
+    - goal_id: Goal identifier
+    - title: New title (optional)
+    - description: New description (optional)
+    - target_value: New target (optional)
+    - deadline: New deadline (optional)
+    - status: New status (optional)
+
+    Returns:
+    - Updated goal
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("goal_update_requested", goal_id=goal_id)
+
+        await goal_tracker.initialize()
+        goal = await goal_tracker.update_goal(goal_id, request)
+
+        if not goal:
+            raise HTTPException(404, f"Goal not found: {goal_id}")
+
+        api_logger.info("goal_updated", goal_id=goal_id)
+
+        return GoalResponse(
+            goal=goal,
+            recently_completed_milestones=[],
+            new_achievements=[]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_logger.error("goal_update_error", goal_id=goal_id, error=str(e))
+        raise HTTPException(500, f"Failed to update goal: {str(e)}")
+
+
+@app.delete("/api/goals/{goal_id}")
+@limiter.limit("30/minute")
+async def delete_goal(
+    goal_id: str,
+    http_request: Request = None
+) -> Dict:
+    """
+    Delete a goal.
+
+    Parameters:
+    - goal_id: Goal identifier
+
+    Returns:
+    - Success status
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("goal_deletion_requested", goal_id=goal_id)
+
+        await goal_tracker.initialize()
+        deleted = await goal_tracker.delete_goal(goal_id)
+
+        if not deleted:
+            raise HTTPException(404, f"Goal not found: {goal_id}")
+
+        api_logger.info("goal_deleted", goal_id=goal_id)
+
+        return {"status": "success", "message": "Goal deleted", "goal_id": goal_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_logger.error("goal_deletion_error", goal_id=goal_id, error=str(e))
+        raise HTTPException(500, f"Failed to delete goal: {str(e)}")
+
+
+@app.get("/api/goals/{goal_id}/progress")
+@limiter.limit("30/minute")
+async def get_goal_progress(
+    goal_id: str,
+    days: int = Query(30, ge=1, le=365),
+    http_request: Request = None
+) -> Dict:
+    """
+    Get progress history for a goal.
+
+    Parameters:
+    - goal_id: Goal identifier
+    - days: Number of days of history (1-365)
+
+    Returns:
+    - Progress history with data points
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("goal_progress_requested", goal_id=goal_id, days=days)
+
+        await goal_tracker.initialize()
+        history = await goal_tracker.get_progress_history(goal_id, days)
+
+        return {
+            "goal_id": goal_id,
+            "days": days,
+            "history": [h.model_dump() for h in history],
+            "count": len(history)
+        }
+
+    except Exception as e:
+        api_logger.error("goal_progress_error", goal_id=goal_id, error=str(e))
+        raise HTTPException(500, f"Failed to get progress: {str(e)}")
+
+
+# ============================================================================
+# ACHIEVEMENT ENDPOINTS (Phase 6)
+# ============================================================================
+
+@app.get("/api/achievements")
+@limiter.limit("30/minute")
+async def list_achievements(
+    category: Optional[str] = Query(None, description="Filter by category"),
+    http_request: Request = None
+) -> AchievementListResponse:
+    """
+    List all achievements.
+
+    PATTERN: Achievement/badge system
+    WHY: Gamification to motivate learners
+
+    Parameters:
+    - category: Optional filter (beginner, streak, quality, exploration, engagement, mastery, milestone, social)
+
+    Returns:
+    - List of achievements with unlock status
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("achievements_list_requested", category=category)
+
+        await achievement_system.initialize()
+
+        if category:
+            from app.analytics.goal_models import AchievementCategory
+            try:
+                cat = AchievementCategory(category)
+                achievements = await achievement_system.get_achievements_by_category(cat)
+            except ValueError:
+                raise HTTPException(400, f"Invalid category: {category}")
+        else:
+            achievements = await achievement_system.get_all_achievements()
+
+        unlocked = [a for a in achievements if a.unlocked]
+        total_points = sum(a.points for a in unlocked)
+
+        # Count by category
+        categories = {}
+        for a in achievements:
+            cat = a.category.value
+            if cat not in categories:
+                categories[cat] = 0
+            if a.unlocked:
+                categories[cat] += 1
+
+        api_logger.info(
+            "achievements_listed",
+            total=len(achievements),
+            unlocked=len(unlocked)
+        )
+
+        return AchievementListResponse(
+            achievements=achievements,
+            total_count=len(achievements),
+            unlocked_count=len(unlocked),
+            total_points=total_points,
+            categories=categories
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        api_logger.error("achievements_list_error", error=str(e))
+        raise HTTPException(500, f"Failed to list achievements: {str(e)}")
+
+
+@app.get("/api/achievements/unlocked")
+@limiter.limit("30/minute")
+async def list_unlocked_achievements(
+    http_request: Request = None
+) -> Dict:
+    """
+    List unlocked achievements.
+
+    Returns:
+    - Only unlocked achievements
+
+    Rate Limit: 30 requests per minute
+    """
+    try:
+        api_logger.info("unlocked_achievements_requested")
+
+        await achievement_system.initialize()
+        achievements = await achievement_system.get_unlocked_achievements()
+        total_points = sum(a.points for a in achievements)
+
+        return {
+            "achievements": [a.model_dump() for a in achievements],
+            "count": len(achievements),
+            "total_points": total_points
+        }
+
+    except Exception as e:
+        api_logger.error("unlocked_achievements_error", error=str(e))
+        raise HTTPException(500, f"Failed to list achievements: {str(e)}")
+
+
+@app.get("/api/achievements/stats")
+@limiter.limit("10/minute")
+async def get_achievement_stats(
+    http_request: Request = None
+) -> Dict:
+    """
+    Get achievement statistics.
+
+    Returns:
+    - Completion stats by category and rarity
+
+    Rate Limit: 10 requests per minute
+    """
+    try:
+        api_logger.info("achievement_stats_requested")
+
+        await achievement_system.initialize()
+        stats = await achievement_system.get_achievement_stats()
+
+        return stats
+
+    except Exception as e:
+        api_logger.error("achievement_stats_error", error=str(e))
+        raise HTTPException(500, f"Failed to get stats: {str(e)}")
+
+
+@app.get("/api/achievements/next")
+@limiter.limit("10/minute")
+async def get_next_achievements(
+    limit: int = Query(5, ge=1, le=10),
+    http_request: Request = None
+) -> Dict:
+    """
+    Get achievements closest to being unlocked.
+
+    Parameters:
+    - limit: Maximum achievements (1-10)
+
+    Returns:
+    - List of near-completion achievements with progress
+
+    Rate Limit: 10 requests per minute
+    """
+    try:
+        api_logger.info("next_achievements_requested", limit=limit)
+
+        await achievement_system.initialize()
+
+        metrics = ProgressMetrics(
+            current_streak=0,
+            longest_streak=0,
+            total_sessions=0,
+            total_exchanges=0,
+            total_topics=0,
+            avg_quality_score=0.0,
+            total_duration_minutes=0,
+            total_feedback=0
+        )
+
+        next_achievements = await achievement_system.get_next_achievements(metrics, limit)
+
+        return {
+            "achievements": [
+                {
+                    "achievement": a.model_dump(),
+                    "progress_percent": pct
+                }
+                for a, pct in next_achievements
+            ],
+            "count": len(next_achievements)
+        }
+
+    except Exception as e:
+        api_logger.error("next_achievements_error", error=str(e))
+        raise HTTPException(500, f"Failed to get next achievements: {str(e)}")
+
+
+# ============================================================================
+# EXPORT ENDPOINTS (Phase 6)
+# ============================================================================
+
+@app.get("/api/export")
+@limiter.limit("5/minute")
+async def export_data(
+    format: str = Query("json", regex="^(json|csv)$"),
+    period: str = Query("month", regex="^(week|month|quarter|year)$"),
+    http_request: Request = None
+) -> Response:
+    """
+    Export analytics data in various formats.
+
+    PATTERN: Multi-format data export
+    WHY: Enable data portability and analysis
+
+    Parameters:
+    - format: Export format (json, csv)
+    - period: Time period (week, month, quarter, year)
+
+    Returns:
+    - Exported data in requested format
+
+    Rate Limit: 5 requests per minute
+    """
+    try:
+        api_logger.info(
+            "data_export_requested",
+            format=format,
+            period=period
+        )
+
+        await export_service.initialize()
+
+        export_period = ReportPeriod(period)
+
+        if format == "json":
+            content = await export_service.export_to_json(export_period)
+            return Response(
+                content=content,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f"attachment; filename=learning_export_{period}.json"
+                }
+            )
+        elif format == "csv":
+            content = await export_service.export_to_csv("goals", export_period)
+            return Response(
+                content=content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=learning_export_{period}.csv"
+                }
+            )
+
+    except Exception as e:
+        api_logger.error(
+            "data_export_error",
+            format=format,
+            period=period,
+            error=str(e)
+        )
+        raise HTTPException(500, f"Failed to export data: {str(e)}")
+
+
+@app.get("/api/export/report")
+@limiter.limit("3/minute")
+async def generate_report(
+    period: str = Query("week", regex="^(week|month)$"),
+    http_request: Request = None
+) -> Dict:
+    """
+    Generate a summary report.
+
+    Parameters:
+    - period: Report period (week, month)
+
+    Returns:
+    - Report data with insights and recommendations
+
+    Rate Limit: 3 requests per minute
+    """
+    try:
+        api_logger.info("report_generation_requested", period=period)
+
+        await export_service.initialize()
+
+        if period == "week":
+            report = await export_service.generate_weekly_report()
+            return {
+                "period": "week",
+                "week_start": str(report.week_start),
+                "week_end": str(report.week_end),
+                "summary": {
+                    "total_sessions": report.summary.total_sessions,
+                    "active_goals": report.summary.active_goals,
+                    "completed_goals": report.summary.completed_goals,
+                    "achievements_unlocked": report.summary.achievements_unlocked,
+                    "total_points": report.summary.total_points
+                },
+                "goals_progress": report.goals_progress,
+                "achievements_earned": report.achievements_earned,
+                "insights": report.insights,
+                "recommendations": report.recommendations
+            }
+        else:
+            report = await export_service.generate_monthly_report()
+            return {
+                "period": "month",
+                "month": report.month,
+                "year": report.year,
+                "summary": {
+                    "total_sessions": report.summary.total_sessions,
+                    "active_goals": report.summary.active_goals,
+                    "completed_goals": report.summary.completed_goals,
+                    "achievements_unlocked": report.summary.achievements_unlocked,
+                    "total_points": report.summary.total_points
+                },
+                "goals_completed": report.goals_completed,
+                "achievements_earned": report.achievements_earned,
+                "insights": report.insights,
+                "recommendations": report.recommendations
+            }
+
+    except Exception as e:
+        api_logger.error("report_generation_error", period=period, error=str(e))
+        raise HTTPException(500, f"Failed to generate report: {str(e)}")
 
 
 # Setup Twilio routes
