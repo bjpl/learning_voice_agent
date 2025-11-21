@@ -1,0 +1,60 @@
+# Railway deployment configuration
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Resource allocation
+[[deploy.resources]]
+memory = 512
+cpu = 1
+
+# Environment-specific configurations
+[environments.staging]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+[environments.staging.healthcheck]
+path = "/health"
+interval = 30
+timeout = 10
+
+[environments.production]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2"
+
+[environments.production.healthcheck]
+path = "/health"
+interval = 30
+timeout = 10
+
+# Service configurations
+[[services]]
+name = "web"
+buildCommand = "pip install -r requirements.txt"
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+[[services]]
+name = "redis"
+image = "redis:7-alpine"
+
+# Volume mounts for SQLite persistence
+[[volumes]]
+mountPath = "/app/data"
+name = "sqlite-data"
+
+# Environment variable groups
+[env]
+PYTHON_VERSION = "3.11"
+PYTHONUNBUFFERED = "1"
+PORT = "8000"
+
+# Required secrets (set via Railway dashboard or CLI)
+# ANTHROPIC_API_KEY
+# OPENAI_API_KEY
+# TWILIO_ACCOUNT_SID (optional)
+# TWILIO_AUTH_TOKEN (optional)
+# REDIS_URL (auto-provided by Railway)
