@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio pytest-timeout httpx
+
+      - name: Run Flake8 (linting)
+        run: |
+          flake8 app/ tests/ --count --show-source --statistics --max-line-length=100
+
+      - name: Run MyPy (type checking)
+        run: |
+          mypy app/ --install-types --non-interactive
+        continue-on-error: true
+
+      - name: Set up test environment
+        run: |
+          cp .env.example .env 2>/dev/null || echo "ANTHROPIC_API_KEY=test-key" > .env
+          echo "OPENAI_API_KEY=test-key" >> .env
+          echo "REDIS_URL=redis://localhost:6379" >> .env
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=70 \
+            --maxfail=5 \
+            --timeout=30 \
+            -v
+        env:
+          ANTHROPIC_API_KEY: test-key
+          OPENAI_API_KEY: test-key
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 14
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true
