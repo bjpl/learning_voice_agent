@@ -11,6 +11,7 @@ export { useAchievementsStore } from './achievements';
 export { useUIStore } from './ui';
 export { useSessionStore, type SessionStore, type UserPreferences } from './session';
 export { useFeedbackStore, type FeedbackStore } from './feedback';
+export { useSyncStore, type SyncStore } from './sync';
 
 // Type exports
 export type { User, UserPreferences as LegacyUserPreferences } from './user';
