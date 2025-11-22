@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          PREV_TAG="${{ steps.prev_tag.outputs.tag }}"
+
+          echo "## What's Changed" > changelog.md
+          echo "" >> changelog.md
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "### Commits since $PREV_TAG" >> changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> changelog.md
+          else
+            echo "### All commits" >> changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" --max-count=50 >> changelog.md
+          fi
+
+          echo "" >> changelog.md
+          echo "" >> changelog.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG_NAME" >> changelog.md
+
+          cat changelog.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "## Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release URL:** https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY

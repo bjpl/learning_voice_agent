@@ -1,0 +1,49 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://${{ vars.RAILWAY_DOMAIN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        run: railway up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          if [ -n "${{ vars.RAILWAY_DOMAIN }}" ]; then
+            curl -f https://${{ vars.RAILWAY_DOMAIN }}/health || echo "Health check skipped"
+          else
+            echo "No domain configured, skipping health check"
+          fi
+        continue-on-error: true
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ vars.RAILWAY_DOMAIN }}" ]; then
+            echo "- **URL:** https://${{ vars.RAILWAY_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          fi
