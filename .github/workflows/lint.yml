@@ -1,0 +1,77 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install black==23.12.1 flake8==7.0.0 mypy==1.8.0 safety==3.0.1
+          pip install -r requirements.txt
+
+      - name: Run Black (code formatting check)
+        run: |
+          black --check --diff app/ tests/
+        continue-on-error: false
+
+      - name: Run Flake8 (linting)
+        run: |
+          flake8 app/ tests/ --count --show-source --statistics
+        continue-on-error: false
+
+      - name: Run MyPy (type checking)
+        run: |
+          mypy app/ --install-types --non-interactive
+        continue-on-error: false
+
+      - name: Run Safety (security check)
+        run: |
+          safety check --json || true
+        continue-on-error: true
+
+      - name: Check import sorting
+        run: |
+          pip install isort==5.13.2
+          isort --check-only --diff app/ tests/
+        continue-on-error: false
+
+      - name: Analyze complexity
+        run: |
+          pip install radon==6.0.1
+          radon cc app/ -a -nb
+          radon mi app/ -nb
+        continue-on-error: true
+
+      - name: Check docstring coverage
+        run: |
+          pip install interrogate==1.5.0
+          interrogate app/ -vv --fail-under=60
+        continue-on-error: true
+
+      - name: Lint summary
+        if: always()
+        run: |
+          echo "✅ Code quality checks completed"
+          echo "- Black: Code formatting"
+          echo "- Flake8: Style guide enforcement"
+          echo "- MyPy: Type checking"
+          echo "- Safety: Security vulnerabilities"
+          echo "- isort: Import sorting"
