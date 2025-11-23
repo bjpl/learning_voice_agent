@@ -9,40 +9,73 @@ SPECIFICATION:
 
 PSEUDOCODE:
 1. Get last 5 exchanges from context
-2. Format system + user prompt
-3. Call Claude Haiku API
-4. Post-process response (add fallback if needed)
-5. Return response
+2. Detect intent and select prompt strategy
+3. Build advanced prompt with few-shot examples
+4. Optionally retrieve similar past conversations (RAG)
+5. Call Claude API
+6. Extract response and reasoning
+7. Return response
 
 ARCHITECTURE:
 - Single responsibility: Only handles Claude interaction
 - Dependency injection: Pass in state manager
 - Error boundaries: Graceful fallback responses
+- Week 3: Advanced prompt engineering integration
 
 REFINEMENT:
 - Cache frequently used prompts
 - Batch API calls when possible
 - Use streaming for lower latency perception
+- Adaptive prompt strategy selection
 
 CODE:
 """
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import anthropic
 from app.config import settings
+from app.advanced_prompts import prompt_engine, PromptStrategy
 import re
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ConversationHandler:
     def __init__(self):
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self.system_prompt = self._create_system_prompt()
-        
-    def _create_system_prompt(self) -> str:
+        self._prompt_engine = prompt_engine
+        self._vector_store = None  # Lazy loaded
+        self._use_advanced_prompts = settings.use_chain_of_thought or settings.use_few_shot
+
+    async def _get_vector_store(self):
+        """Lazy load vector store for RAG."""
+        if self._vector_store is None and settings.enable_vector_search:
+            try:
+                from app.vector_store import vector_store
+                await vector_store.initialize()
+                self._vector_store = vector_store
+            except Exception as e:
+                logger.warning(f"Vector store not available: {e}")
+        return self._vector_store
+
+    def _get_system_prompt(self, strategy: PromptStrategy) -> str:
+        """
+        Get system prompt based on active strategy.
+
+        CONCEPT: Dynamic prompt selection
+        WHY: Different situations benefit from different prompting approaches
+        """
+        if self._use_advanced_prompts:
+            return self._prompt_engine.build_system_prompt(strategy)
+        return self._create_basic_system_prompt()
+
+    def _create_basic_system_prompt(self) -> str:
         """
         CONCEPT: Carefully crafted system prompt
         WHY: The prompt IS the intelligence - no complex logic needed
         PATTERN: Behavioral specification through examples
         """
-        return """You are a personal learning companion helping capture and develop ideas. 
+        return """You are a personal learning companion helping capture and develop ideas.
 
 Your role:
 - Ask ONE clarifying question when responses are vague or under 10 words
@@ -103,27 +136,74 @@ Special behaviors:
         """
         PATTERN: Main conversation logic with error handling
         WHY: Centralized intelligence with graceful degradation
+
+        Week 3 Enhancement: Now uses advanced prompt engineering
+        with chain-of-thought, few-shot, and RAG capabilities.
         """
         try:
-            # Format the context
-            context_str = self._format_context(context)
-            
-            # Build the user message
-            user_message = f"{context_str}\n\nUser just said: {user_text}\n\nRespond naturally and help them capture their learning effectively."
-            
+            # Detect intent for prompt strategy selection
+            intent = self.detect_intent(user_text)
+
+            # Get similar past conversations for RAG (if enabled)
+            similar_conversations = []
+            if settings.enable_vector_search:
+                vs = await self._get_vector_store()
+                if vs:
+                    try:
+                        similar_conversations = await vs.semantic_search(
+                            query=user_text,
+                            limit=3,
+                            similarity_threshold=settings.semantic_search_threshold
+                        )
+                    except Exception as e:
+                        logger.warning(f"RAG search failed: {e}")
+
+            # Select prompt strategy based on context
+            strategy = self._prompt_engine.select_strategy_for_context(
+                user_text=user_text,
+                intent=intent,
+                context_length=len(context),
+                has_similar_conversations=len(similar_conversations) > 0
+            )
+
+            # Get system prompt for strategy
+            system_prompt = self._get_system_prompt(strategy)
+
+            # Build user message with advanced prompting
+            if self._use_advanced_prompts:
+                user_message = self._prompt_engine.build_user_message(
+                    user_text=user_text,
+                    context=context,
+                    intent=intent,
+                    similar_conversations=similar_conversations,
+                    strategy=strategy
+                )
+            else:
+                # Fallback to basic prompt building
+                context_str = self._format_context(context)
+                user_message = f"{context_str}\n\nUser just said: {user_text}\n\nRespond naturally and help them capture their learning effectively."
+
             # Call Claude API
             message = await self.client.messages.create(
                 model=settings.claude_model,
                 max_tokens=settings.claude_max_tokens,
                 temperature=settings.claude_temperature,
-                system=self.system_prompt,
+                system=system_prompt,
                 messages=[
                     {"role": "user", "content": user_message}
                 ]
             )
-            
-            response = message.content[0].text.strip()
-            
+
+            raw_response = message.content[0].text.strip()
+
+            # Extract response (removing thinking tags if present)
+            if self._use_advanced_prompts:
+                response, reasoning = self._prompt_engine.extract_response(raw_response)
+                if reasoning:
+                    logger.debug(f"Chain-of-thought reasoning: {reasoning[:100]}...")
+            else:
+                response = raw_response
+
             # Add follow-up if needed
             if self._should_add_followup(user_text, response):
                 followups = [
@@ -135,16 +215,16 @@ Special behaviors:
                 ]
                 import random
                 response += f" {random.choice(followups)}"
-            
+
             return response
-            
+
         except anthropic.RateLimitError:
             return "I need a moment to catch up. Could you repeat that?"
         except anthropic.APIError as e:
-            print(f"Claude API error: {e}")
+            logger.error(f"Claude API error: {e}")
             return "I'm having trouble connecting right now. Let's try again - what were you saying?"
         except Exception as e:
-            print(f"Unexpected error in conversation handler: {e}")
+            logger.error(f"Unexpected error in conversation handler: {e}")
             return "Something went wrong on my end. Could you say that again?"
     
     def detect_intent(self, text: str) -> str:

@@ -1,0 +1,51 @@
+# Railway Configuration with Auto-Scaling
+# Target: 1-10 instances based on load
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4"
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# Auto-scaling configuration
+numReplicas = 1
+
+[deploy.scaling]
+# Minimum and maximum replicas
+minReplicas = 1
+maxReplicas = 10
+
+# Scale up when CPU > 70%
+cpuThresholdPercentage = 70
+
+# Scale up when memory > 80%
+memoryThresholdPercentage = 80
+
+# Scale up when requests per second > 100
+requestsPerSecondThreshold = 100
+
+# Cooldown periods (seconds)
+scaleUpCooldownSeconds = 60
+scaleDownCooldownSeconds = 300
+
+[deploy.healthCheck]
+path = "/"
+timeout = 30
+interval = 10
+gracePeriod = 30
+
+# Environment variable templates
+[variables]
+PORT = "8000"
+WORKERS = "4"
+LOG_LEVEL = "info"
+
+# Production optimizations
+REDIS_POOL_SIZE = "20"
+DB_POOL_SIZE = "10"
+MAX_CONNECTIONS = "1000"

@@ -1,0 +1,790 @@
+openapi: 3.0.3
+info:
+  title: Learning Voice Agent API
+  description: |
+    AI-powered voice conversation API for learning capture and knowledge management.
+
+    ## Overview
+    The Learning Voice Agent provides multiple interfaces for capturing and retrieving
+    conversational learning content:
+
+    - **REST API**: Synchronous request/response for simple integrations
+    - **WebSocket**: Real-time bidirectional streaming for audio conversations
+    - **Twilio Webhooks**: Phone-based voice conversations
+
+    ## Authentication
+    Currently, the API does not require authentication for development.
+    Production deployments should implement appropriate authentication mechanisms.
+
+    ## Rate Limiting
+    No rate limiting is currently enforced. Production deployments should
+    implement rate limiting based on session_id or client IP.
+
+    ## Error Handling
+    All endpoints return standard HTTP status codes:
+    - `200`: Success
+    - `400`: Bad Request (invalid input)
+    - `403`: Forbidden (invalid Twilio signature)
+    - `500`: Internal Server Error
+  version: 1.0.0
+  contact:
+    name: Learning Voice Agent Team
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server (configure as needed)
+
+tags:
+  - name: Health
+    description: Health check and service information
+  - name: Conversation
+    description: Core conversation handling endpoints
+  - name: Search
+    description: Full-text search across captured content
+  - name: Sessions
+    description: Session management and history
+  - name: Statistics
+    description: System statistics and monitoring
+  - name: Twilio
+    description: Twilio voice webhook endpoints
+  - name: WebSocket
+    description: Real-time WebSocket communication
+
+paths:
+  /:
+    get:
+      tags:
+        - Health
+      summary: Health check and API information
+      description: Returns service health status and available endpoints
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: healthy
+                service: Learning Voice Agent
+                version: 1.0.0
+                endpoints:
+                  websocket: /ws/{session_id}
+                  twilio: /twilio/voice
+                  search: /api/search
+                  stats: /api/stats
+
+  /api/conversation:
+    post:
+      tags:
+        - Conversation
+      summary: Process a conversation turn
+      description: |
+        Handles a single conversation turn. Accepts either text input or
+        base64-encoded audio. If audio is provided, it will be transcribed
+        using OpenAI Whisper before processing.
+
+        The endpoint:
+        1. Transcribes audio (if provided)
+        2. Retrieves conversation context from Redis
+        3. Generates response using Claude Haiku
+        4. Updates conversation state asynchronously
+        5. Returns the response immediately
+      operationId: handleConversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationRequest'
+            examples:
+              textInput:
+                summary: Text input
+                value:
+                  session_id: abc-123
+                  text: I'm learning about distributed systems
+              audioInput:
+                summary: Audio input
+                value:
+                  session_id: abc-123
+                  audio_base64: UklGRiQAAABXQVZFZm10...
+              newSession:
+                summary: New session (no session_id)
+                value:
+                  text: Let me tell you about my new project
+      responses:
+        '200':
+          description: Conversation response generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationResponse'
+              example:
+                session_id: abc-123
+                user_text: I'm learning about distributed systems
+                agent_text: That's exciting! Distributed systems are fundamental to modern software. What aspect interests you most - consistency models, fault tolerance, or scalability patterns?
+                intent: statement
+                timestamp: '2024-01-15T10:30:00Z'
+        '400':
+          description: Bad request - no input provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: No input provided
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Failed to process conversation
+
+  /api/search:
+    post:
+      tags:
+        - Search
+      summary: Search captured content
+      description: |
+        Performs full-text search across all captured conversations using
+        SQLite FTS5 with BM25 ranking for relevance scoring.
+
+        The search supports:
+        - Natural language queries
+        - Phrase matching (use quotes)
+        - Boolean operators (AND, OR, NOT)
+        - Prefix matching (word*)
+
+        Results include highlighted snippets showing match context.
+      operationId: searchCaptures
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            examples:
+              simpleSearch:
+                summary: Simple keyword search
+                value:
+                  query: distributed systems
+                  limit: 20
+              phraseSearch:
+                summary: Phrase search
+                value:
+                  query: '"consensus algorithm"'
+                  limit: 10
+              booleanSearch:
+                summary: Boolean search
+                value:
+                  query: kubernetes OR docker
+                  limit: 50
+      responses:
+        '200':
+          description: Search results returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              example:
+                query: distributed systems
+                results:
+                  - id: 42
+                    session_id: session-123
+                    timestamp: '2024-01-15T10:30:00Z'
+                    user_text: I've been studying distributed systems
+                    agent_text: Great topic! What specific area?
+                    user_snippet: studying <mark>distributed</mark> <mark>systems</mark>
+                    agent_snippet: Great topic...
+                count: 1
+
+  /api/stats:
+    get:
+      tags:
+        - Statistics
+      summary: Get system statistics
+      description: |
+        Returns current system statistics including:
+        - Database metrics (total captures, unique sessions)
+        - Active session count and IDs
+        - Last capture timestamp
+      operationId: getStats
+      responses:
+        '200':
+          description: Statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+              example:
+                database:
+                  total_captures: 1523
+                  unique_sessions: 47
+                  last_capture: '2024-01-15T10:30:00Z'
+                sessions:
+                  active: 3
+                  ids:
+                    - session-123
+                    - session-456
+                    - twilio_CA123
+
+  /api/session/{session_id}/history:
+    get:
+      tags:
+        - Sessions
+      summary: Get session conversation history
+      description: |
+        Retrieves the conversation history for a specific session.
+        Results are ordered chronologically (oldest first).
+      operationId: getSessionHistory
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          description: Unique session identifier
+          schema:
+            type: string
+          example: abc-123
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of exchanges to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 10
+      responses:
+        '200':
+          description: Session history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionHistoryResponse'
+              example:
+                session_id: abc-123
+                history:
+                  - id: 1
+                    timestamp: '2024-01-15T10:00:00Z'
+                    user_text: Hello, I want to learn Python
+                    agent_text: Great choice! Python is versatile...
+                    metadata: '{"source": "api"}'
+                  - id: 2
+                    timestamp: '2024-01-15T10:01:00Z'
+                    user_text: Where should I start?
+                    agent_text: I recommend starting with basics...
+                    metadata: '{"source": "api"}'
+                count: 2
+
+  /twilio/voice:
+    post:
+      tags:
+        - Twilio
+      summary: Twilio voice webhook
+      description: |
+        Main entry point for Twilio voice calls. Handles incoming calls and
+        generates TwiML responses for voice interaction.
+
+        This endpoint:
+        1. Validates the Twilio request signature (in production)
+        2. Creates or retrieves the session based on CallSid
+        3. Generates appropriate TwiML based on call status
+        4. Updates session metadata asynchronously
+
+        **Note**: This endpoint expects `application/x-www-form-urlencoded` data
+        from Twilio, not JSON.
+      operationId: handleTwilioVoice
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwilioVoiceRequest'
+      responses:
+        '200':
+          description: TwiML response generated
+          content:
+            application/xml:
+              schema:
+                type: string
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Response>
+                  <Gather input="speech" timeout="3" language="en-US"
+                          action="/twilio/process-speech?session_id=twilio_CA123"
+                          method="POST" speechTimeout="auto" enhanced="true">
+                    <Say voice="Polly.Joanna-Neural" language="en-US">
+                      Hello! I'm your learning companion. Tell me what you're working on.
+                    </Say>
+                  </Gather>
+                  <Say>I didn't catch that. Let's try again.</Say>
+                  <Redirect>/twilio/voice?session_id=twilio_CA123</Redirect>
+                </Response>
+        '403':
+          description: Invalid Twilio request signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Invalid request signature
+
+  /twilio/process-speech:
+    post:
+      tags:
+        - Twilio
+      summary: Process Twilio speech input
+      description: |
+        Processes transcribed speech from Twilio's speech recognition.
+        Generates a conversational response and returns TwiML for continuation.
+
+        The endpoint:
+        1. Validates speech confidence (threshold: 0.5)
+        2. Retrieves conversation context
+        3. Generates AI response using Claude
+        4. Detects conversation intent for flow control
+        5. Returns appropriate TwiML (continue or end call)
+      operationId: processTwilioSpeech
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          description: Session identifier from voice webhook
+          schema:
+            type: string
+          example: twilio_CA123456
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                SpeechResult:
+                  type: string
+                  description: Transcribed speech text
+                Confidence:
+                  type: number
+                  format: float
+                  description: Speech recognition confidence (0-1)
+      responses:
+        '200':
+          description: TwiML response with agent reply
+          content:
+            application/xml:
+              schema:
+                type: string
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Response>
+                  <Gather input="speech" timeout="5" language="en-US"
+                          action="/twilio/process-speech?session_id=twilio_CA123"
+                          method="POST" speechTimeout="auto" enhanced="true">
+                    <Say voice="Polly.Joanna-Neural" language="en-US">
+                      That's interesting! Tell me more about that project.
+                    </Say>
+                  </Gather>
+                  <Say>I didn't catch that. Let's try again.</Say>
+                  <Redirect>/twilio/voice?session_id=twilio_CA123</Redirect>
+                </Response>
+
+  /twilio/recording:
+    post:
+      tags:
+        - Twilio
+      summary: Handle Twilio recording webhook
+      description: |
+        Receives notification of completed recordings from Twilio.
+        Processes the recording asynchronously in the background.
+
+        **Note**: Full recording processing (download, transcribe, respond)
+        is implemented as a background task.
+      operationId: handleTwilioRecording
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                RecordingUrl:
+                  type: string
+                  description: URL to download the recording
+                CallSid:
+                  type: string
+                  description: Twilio Call SID
+                RecordingSid:
+                  type: string
+                  description: Twilio Recording SID
+                RecordingDuration:
+                  type: integer
+                  description: Recording duration in seconds
+      responses:
+        '200':
+          description: Recording acknowledged
+          content:
+            application/xml:
+              schema:
+                type: string
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Response>
+                  <Say>Got it. Processing your recording.</Say>
+                </Response>
+
+components:
+  schemas:
+    ConversationRequest:
+      type: object
+      description: Request body for conversation endpoint
+      properties:
+        session_id:
+          type: string
+          description: |
+            Session identifier for conversation context. If not provided,
+            a new UUID will be generated.
+          example: abc-123
+        text:
+          type: string
+          description: Text input for the conversation
+          example: I'm learning about distributed systems
+        audio_base64:
+          type: string
+          description: |
+            Base64-encoded audio data. Supported formats: WAV, MP3, M4A, WEBM.
+            Maximum duration: 60 seconds.
+          example: UklGRiQAAABXQVZFZm10...
+      example:
+        session_id: abc-123
+        text: I'm learning about distributed systems
+
+    ConversationResponse:
+      type: object
+      description: Response from conversation endpoint
+      required:
+        - session_id
+        - user_text
+        - agent_text
+      properties:
+        session_id:
+          type: string
+          description: Session identifier
+          example: abc-123
+        user_text:
+          type: string
+          description: Transcribed or provided user input
+          example: I'm learning about distributed systems
+        agent_text:
+          type: string
+          description: AI-generated response
+          example: That's exciting! What aspect interests you most?
+        intent:
+          type: string
+          description: Detected conversation intent
+          enum:
+            - statement
+            - question
+            - end_conversation
+            - clarification
+          default: statement
+          example: statement
+        timestamp:
+          type: string
+          format: date-time
+          description: Response timestamp (UTC)
+          example: '2024-01-15T10:30:00Z'
+
+    SearchRequest:
+      type: object
+      description: Request body for search endpoint
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          description: |
+            Search query using FTS5 syntax. Supports:
+            - Simple keywords: distributed systems
+            - Phrases: "consensus algorithm"
+            - Boolean: kubernetes OR docker
+            - Prefix: contain*
+          example: distributed systems
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+          description: Maximum number of results to return
+          example: 20
+
+    SearchResponse:
+      type: object
+      description: Response from search endpoint
+      required:
+        - query
+        - results
+        - count
+      properties:
+        query:
+          type: string
+          description: Original search query
+          example: distributed systems
+        results:
+          type: array
+          description: Array of matching captures
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        count:
+          type: integer
+          description: Number of results returned
+          example: 5
+
+    SearchResult:
+      type: object
+      description: Individual search result
+      properties:
+        id:
+          type: integer
+          description: Capture ID
+          example: 42
+        session_id:
+          type: string
+          description: Session that captured this exchange
+          example: session-123
+        timestamp:
+          type: string
+          format: date-time
+          description: When the capture was recorded
+          example: '2024-01-15T10:30:00Z'
+        user_text:
+          type: string
+          description: User's original message
+          example: I've been studying distributed systems
+        agent_text:
+          type: string
+          description: Agent's response
+          example: Great topic! What specific area interests you?
+        user_snippet:
+          type: string
+          description: User text with highlighted matches
+          example: studying <mark>distributed</mark> <mark>systems</mark>
+        agent_snippet:
+          type: string
+          description: Agent text with highlighted matches
+          example: Great topic...
+
+    StatsResponse:
+      type: object
+      description: System statistics response
+      properties:
+        database:
+          type: object
+          description: Database metrics
+          properties:
+            total_captures:
+              type: integer
+              description: Total number of captured exchanges
+              example: 1523
+            unique_sessions:
+              type: integer
+              description: Number of unique sessions
+              example: 47
+            last_capture:
+              type: string
+              format: date-time
+              description: Timestamp of most recent capture
+              example: '2024-01-15T10:30:00Z'
+        sessions:
+          type: object
+          description: Active session information
+          properties:
+            active:
+              type: integer
+              description: Number of currently active sessions
+              example: 3
+            ids:
+              type: array
+              items:
+                type: string
+              description: List of active session IDs
+              example:
+                - session-123
+                - session-456
+
+    SessionHistoryResponse:
+      type: object
+      description: Session history response
+      properties:
+        session_id:
+          type: string
+          description: Session identifier
+          example: abc-123
+        history:
+          type: array
+          description: Chronologically ordered exchanges
+          items:
+            $ref: '#/components/schemas/HistoryItem'
+        count:
+          type: integer
+          description: Number of exchanges returned
+          example: 5
+
+    HistoryItem:
+      type: object
+      description: Single exchange in history
+      properties:
+        id:
+          type: integer
+          description: Exchange ID
+          example: 1
+        timestamp:
+          type: string
+          format: date-time
+          description: When the exchange occurred
+          example: '2024-01-15T10:00:00Z'
+        user_text:
+          type: string
+          description: User's message
+          example: Hello, I want to learn Python
+        agent_text:
+          type: string
+          description: Agent's response
+          example: Great choice! Python is versatile...
+        metadata:
+          type: string
+          description: JSON-encoded metadata
+          example: '{"source": "api"}'
+
+    TwilioVoiceRequest:
+      type: object
+      description: Twilio voice webhook request
+      properties:
+        CallSid:
+          type: string
+          description: Unique identifier for the call
+          example: CA1234567890abcdef
+        From:
+          type: string
+          description: Caller phone number
+          example: '+15551234567'
+        To:
+          type: string
+          description: Called phone number
+          example: '+15559876543'
+        CallStatus:
+          type: string
+          description: Current call status
+          enum:
+            - ringing
+            - in-progress
+            - completed
+            - busy
+            - failed
+            - no-answer
+          example: ringing
+        RecordingUrl:
+          type: string
+          description: URL of any recording
+          example: https://api.twilio.com/...
+        SpeechResult:
+          type: string
+          description: Transcribed speech (if using Gather)
+          example: I want to learn about machine learning
+
+    HealthResponse:
+      type: object
+      description: Health check response
+      properties:
+        status:
+          type: string
+          description: Service health status
+          enum:
+            - healthy
+            - degraded
+            - unhealthy
+          example: healthy
+        service:
+          type: string
+          description: Service name
+          example: Learning Voice Agent
+        version:
+          type: string
+          description: API version
+          example: 1.0.0
+        endpoints:
+          type: object
+          description: Available endpoints
+          properties:
+            websocket:
+              type: string
+              example: /ws/{session_id}
+            twilio:
+              type: string
+              example: /twilio/voice
+            search:
+              type: string
+              example: /api/search
+            stats:
+              type: string
+              example: /api/stats
+
+    ErrorResponse:
+      type: object
+      description: Standard error response
+      properties:
+        detail:
+          type: string
+          description: Error message
+          example: No input provided
+
+    WebSocketMessage:
+      type: object
+      description: WebSocket message format
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: Message type
+          enum:
+            - audio
+            - text
+            - end
+            - ping
+            - response
+            - summary
+          example: audio
+        audio:
+          type: string
+          description: Base64-encoded audio (for type=audio)
+          example: UklGRiQAAABXQVZFZm10...
+        text:
+          type: string
+          description: Text content (for type=text)
+          example: Hello, I'm learning programming
+        session_id:
+          type: string
+          description: Session identifier
+          example: ws-session-123
+        user_text:
+          type: string
+          description: Transcribed user input (in response)
+          example: I'm learning about APIs
+        agent_text:
+          type: string
+          description: Agent response (in response)
+          example: APIs are great for connecting services...
+        intent:
+          type: string
+          description: Detected intent (in response)
+          example: statement

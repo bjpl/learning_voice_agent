@@ -1,0 +1,202 @@
+"""
+Tests for Session Cleanup Job
+PATTERN: Unit tests for background job functionality
+WHY: Validate cleanup logic works correctly
+
+Week 2 Production Hardening Tests
+"""
+import pytest
+import asyncio
+import json
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+class MockResilientRedis:
+    """Mock Redis client for testing."""
+
+    def __init__(self):
+        self.data = {}
+        self.deleted_keys = []
+
+    async def get(self, key):
+        return self.data.get(key)
+
+    async def delete(self, *keys):
+        count = 0
+        for key in keys:
+            if key in self.data:
+                del self.data[key]
+                count += 1
+            self.deleted_keys.append(key)
+        return count
+
+    async def scan_iter(self, match="*", count=100):
+        for key in list(self.data.keys()):
+            if match == "*" or match.replace("*", "") in key:
+                yield key
+
+    async def connect(self):
+        return True
+
+    async def close(self):
+        pass
+
+
+class TestSessionCleanupJob:
+    """Tests for SessionCleanupJob class."""
+
+    @pytest.fixture
+    def mock_redis(self):
+        """Create mock Redis with test data."""
+        redis = MockResilientRedis()
+
+        # Add active session
+        active_metadata = {
+            "created_at": datetime.utcnow().isoformat(),
+            "last_activity": datetime.utcnow().isoformat(),
+            "exchange_count": 5
+        }
+        redis.data["session:active-123:metadata"] = json.dumps(active_metadata)
+        redis.data["session:active-123:context"] = json.dumps([])
+
+        # Add expired session (2 hours old activity)
+        expired_time = datetime.utcnow() - timedelta(hours=2)
+        expired_metadata = {
+            "created_at": expired_time.isoformat(),
+            "last_activity": expired_time.isoformat(),
+            "exchange_count": 3
+        }
+        redis.data["session:expired-456:metadata"] = json.dumps(expired_metadata)
+        redis.data["session:expired-456:context"] = json.dumps([])
+
+        return redis
+
+    @pytest.mark.asyncio
+    async def test_identifies_expired_sessions(self, mock_redis):
+        """Test that expired sessions are identified correctly."""
+        from scripts.session_cleanup import SessionCleanupJob
+
+        job = SessionCleanupJob(
+            redis_client=mock_redis,
+            session_timeout=180  # 3 minutes
+        )
+
+        # Run cleanup
+        stats = await job.run()
+
+        # Should have deleted expired session keys
+        assert "session:expired-456:metadata" in mock_redis.deleted_keys or \
+               "session:expired-456:context" in mock_redis.deleted_keys
+
+    @pytest.mark.asyncio
+    async def test_preserves_active_sessions(self, mock_redis):
+        """Test that active sessions are not deleted."""
+        from scripts.session_cleanup import SessionCleanupJob
+
+        job = SessionCleanupJob(
+            redis_client=mock_redis,
+            session_timeout=180
+        )
+
+        await job.run()
+
+        # Active session should still exist
+        assert "session:active-123:metadata" in mock_redis.data
+
+    @pytest.mark.asyncio
+    async def test_returns_cleanup_stats(self, mock_redis):
+        """Test that cleanup returns statistics."""
+        from scripts.session_cleanup import SessionCleanupJob
+
+        job = SessionCleanupJob(
+            redis_client=mock_redis,
+            session_timeout=180
+        )
+
+        stats = await job.run()
+
+        assert "start_time" in stats
+        assert "end_time" in stats
+        assert "duration_seconds" in stats
+        assert "redis_keys_scanned" in stats
+
+    @pytest.mark.asyncio
+    async def test_handles_redis_errors_gracefully(self):
+        """Test that Redis errors are handled gracefully."""
+        from scripts.session_cleanup import SessionCleanupJob
+
+        # Create a mock that raises errors
+        error_redis = MockResilientRedis()
+        original_scan = error_redis.scan_iter
+
+        async def failing_scan(*args, **kwargs):
+            raise Exception("Redis connection lost")
+
+        error_redis.scan_iter = failing_scan
+
+        job = SessionCleanupJob(redis_client=error_redis, session_timeout=180)
+
+        # Should not raise, but record the error
+        stats = await job.run()
+        assert stats["errors"] >= 1
+
+
+class TestCleanupDaemon:
+    """Tests for CleanupDaemon process."""
+
+    @pytest.mark.asyncio
+    async def test_daemon_can_be_stopped(self):
+        """Test that daemon stops gracefully."""
+        from scripts.session_cleanup import CleanupDaemon
+
+        daemon = CleanupDaemon(interval_seconds=1)
+
+        # Start daemon in background
+        task = asyncio.create_task(daemon.start())
+
+        # Let it run briefly
+        await asyncio.sleep(0.1)
+
+        # Stop it
+        await daemon.stop()
+
+        # Should complete without hanging
+        try:
+            await asyncio.wait_for(task, timeout=2.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+            pytest.fail("Daemon did not stop in time")
+
+
+class TestCleanupJobConfiguration:
+    """Tests for cleanup job configuration."""
+
+    def test_default_batch_size(self):
+        """Test default batch size is reasonable."""
+        from scripts.session_cleanup import SessionCleanupJob
+
+        job = SessionCleanupJob(
+            redis_client=MockResilientRedis(),
+        )
+
+        assert job.batch_size == 100
+
+    def test_custom_session_timeout(self):
+        """Test custom session timeout is applied."""
+        from scripts.session_cleanup import SessionCleanupJob
+
+        job = SessionCleanupJob(
+            redis_client=MockResilientRedis(),
+            session_timeout=3600  # 1 hour
+        )
+
+        assert job.session_timeout == 3600
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

@@ -4,61 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Learning Voice Agent</title>
-    
+
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#4F46E5">
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
+
     <!-- Vue 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <style>
         /* Breathing animation for listening state */
         @keyframes breathe {
             0%, 100% { transform: scale(1); opacity: 0.7; }
             50% { transform: scale(1.1); opacity: 1; }
         }
-        
+
         .breathing {
             animation: breathe 2s ease-in-out infinite;
         }
-        
+
         /* Spinning ring for processing */
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
+
         .spinning {
             animation: spin 1s linear infinite;
         }
-        
+
         /* Word-by-word appearance */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(5px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        
+
         .word-appear {
             animation: fadeIn 0.3s ease-out;
         }
-        
+
         /* Custom scrollbar */
         .chat-container::-webkit-scrollbar {
             width: 6px;
         }
-        
+
         .chat-container::-webkit-scrollbar-track {
             background: #f1f1f1;
         }
-        
+
         .chat-container::-webkit-scrollbar-thumb {
             background: #888;
             border-radius: 3px;
+        }
+
+        /* Week 3: Semantic search highlight */
+        .semantic-match {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 600;
+        }
+
+        /* Week 3: Similarity score badge */
+        .similarity-badge {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        /* Week 3: Offline indicator */
+        .offline-indicator {
+            background: #f59e0b;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
     </style>
 </head>
@@ -69,16 +93,20 @@
             <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
                 <h1 class="text-xl font-semibold text-gray-900">Learning Voice Agent</h1>
                 <div class="flex items-center space-x-4">
+                    <!-- Week 3: Offline indicator -->
+                    <span v-if="isOffline" class="offline-indicator px-2 py-1 rounded-full text-xs text-white">
+                        Offline
+                    </span>
                     <span v-if="sessionId" class="text-sm text-gray-500">
                         Session: {{ sessionId.slice(0, 8) }}...
                     </span>
-                    <button 
+                    <button
                         @click="toggleSearch"
                         class="p-2 rounded-lg hover:bg-gray-100 transition"
                         title="Search (Cmd+K)"
                     >
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
                     </button>
@@ -88,24 +116,49 @@
 
         <!-- Main Content -->
         <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-6">
-            <!-- Search Bar (Hidden by default) -->
+            <!-- Search Bar (Hidden by default) - Week 3 Enhanced -->
             <div v-if="showSearch" class="mb-6">
-                <input
-                    v-model="searchQuery"
-                    @input="performSearch"
-                    type="text"
-                    placeholder="Search your captures..."
-                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    ref="searchInput"
-                >
+                <div class="flex gap-2 mb-2">
+                    <input
+                        v-model="searchQuery"
+                        @input="performSearch"
+                        type="text"
+                        :placeholder="useSemanticSearch ? 'Semantic search: find by meaning...' : 'Keyword search...'"
+                        class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        ref="searchInput"
+                    >
+                    <!-- Week 3: Semantic search toggle -->
+                    <button
+                        @click="toggleSearchMode"
+                        :class="[
+                            'px-3 py-2 rounded-lg text-sm font-medium transition',
+                            useSemanticSearch
+                                ? 'bg-purple-500 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        ]"
+                        title="Toggle semantic search"
+                    >
+                        {{ useSemanticSearch ? 'Semantic' : 'Keyword' }}
+                    </button>
+                </div>
                 <div v-if="searchResults.length > 0" class="mt-2 bg-white rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    <div v-for="result in searchResults" :key="result.id" 
+                    <div v-for="result in searchResults" :key="result.id"
                          class="p-3 border-b hover:bg-gray-50 cursor-pointer"
                          @click="viewResult(result)">
-                        <div class="text-sm text-gray-600" v-html="result.user_snippet"></div>
-                        <div class="text-sm text-gray-800 mt-1" v-html="result.agent_snippet"></div>
-                        <div class="text-xs text-gray-400 mt-1">{{ formatDate(result.timestamp) }}</div>
+                        <!-- Week 3: Show similarity score for semantic search -->
+                        <div v-if="result.similarity" class="flex items-center justify-between mb-1">
+                            <span class="similarity-badge text-xs text-white px-2 py-0.5 rounded-full">
+                                {{ Math.round(result.similarity * 100) }}% match
+                            </span>
+                            <span class="text-xs text-gray-400">{{ formatDate(result.timestamp) }}</span>
+                        </div>
+                        <div class="text-sm text-gray-600" v-html="result.user_snippet || result.user_text"></div>
+                        <div class="text-sm text-gray-800 mt-1" v-html="result.agent_snippet || result.agent_text"></div>
+                        <div v-if="!result.similarity" class="text-xs text-gray-400 mt-1">{{ formatDate(result.timestamp) }}</div>
                     </div>
+                </div>
+                <div v-if="searchQuery && searchResults.length === 0 && !isSearching" class="mt-2 text-center text-gray-500 py-4">
+                    No results found for "{{ searchQuery }}"
                 </div>
             </div>
 
@@ -220,15 +273,24 @@
                     mediaRecorder: null,
                     audioChunks: [],
                     ws: null,
-                    reconnectAttempts: 0
+                    reconnectAttempts: 0,
+                    // Week 3: New state
+                    isOffline: !navigator.onLine,
+                    useSemanticSearch: true,
+                    isSearching: false,
+                    pendingSyncCount: 0,
+                    serviceWorkerReady: false
                 }
             },
-            
+
             mounted() {
                 this.initializeSession();
                 this.setupKeyboardShortcuts();
                 this.loadStats();
                 this.setupWebSocket();
+                // Week 3: Setup offline handling
+                this.setupOfflineHandling();
+                this.checkServiceWorker();
             },
             
             methods: {
@@ -278,26 +340,37 @@
                 
                 handleWebSocketMessage(data) {
                     if (data.type === 'response') {
-                        this.conversations.push({
+                        const conversation = {
                             user: data.user_text,
                             agent: data.agent_text,
                             timestamp: new Date()
+                        };
+
+                        this.conversations.push(conversation);
+
+                        // Week 3: Store to offline cache
+                        this.storeConversationOffline(conversation).catch(err => {
+                            console.warn('Failed to store offline:', err);
                         });
-                        
+
                         // Speak the response
                         this.speakText(data.agent_text);
-                        
+
                         // Auto-scroll
                         this.$nextTick(() => {
                             this.$refs.chatContainer.scrollTop = this.$refs.chatContainer.scrollHeight;
                         });
-                        
+
                         // End conversation if intent is goodbye
                         if (data.intent === 'end_conversation') {
                             this.endConversation();
                         }
                     } else if (data.type === 'summary') {
                         this.statusMessage = data.text;
+                    } else if (data.type === 'offline_queued') {
+                        // Week 3: Handle offline queued response
+                        this.statusMessage = 'Message queued - will send when online';
+                        this.pendingSyncCount++;
                     }
                 },
                 
@@ -415,14 +488,29 @@
                     }
                 },
                 
+                // Week 3: Toggle between semantic and keyword search
+                toggleSearchMode() {
+                    this.useSemanticSearch = !this.useSemanticSearch;
+                    if (this.searchQuery) {
+                        this.performSearch();
+                    }
+                },
+
                 async performSearch() {
                     if (this.searchQuery.length < 2) {
                         this.searchResults = [];
                         return;
                     }
-                    
+
+                    this.isSearching = true;
+
                     try {
-                        const response = await fetch('/api/search', {
+                        // Week 3: Use semantic or keyword search based on toggle
+                        const endpoint = this.useSemanticSearch
+                            ? '/api/semantic-search'
+                            : '/api/search';
+
+                        const response = await fetch(endpoint, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -432,13 +520,53 @@
                                 limit: 10
                             })
                         });
-                        
+
                         const data = await response.json();
                         this.searchResults = data.results;
-                        
+
+                        // Track search type for debugging
+                        console.log(`Search type: ${data.search_type || 'keyword'}, Results: ${data.count}`);
+
                     } catch (error) {
                         console.error('Search error:', error);
+                        // Week 3: Fallback to offline search if available
+                        if (this.isOffline) {
+                            await this.searchOfflineConversations();
+                        }
+                    } finally {
+                        this.isSearching = false;
                     }
+                },
+
+                // Week 3: Search conversations stored offline
+                async searchOfflineConversations() {
+                    if (!navigator.serviceWorker.controller) return;
+
+                    return new Promise((resolve) => {
+                        const channel = new MessageChannel();
+                        channel.port1.onmessage = (event) => {
+                            const { conversations } = event.data;
+                            // Simple client-side filtering
+                            const query = this.searchQuery.toLowerCase();
+                            this.searchResults = conversations
+                                .filter(c =>
+                                    c.user_text?.toLowerCase().includes(query) ||
+                                    c.agent_text?.toLowerCase().includes(query)
+                                )
+                                .slice(0, 10)
+                                .map(c => ({
+                                    ...c,
+                                    user_snippet: c.user_text,
+                                    agent_snippet: c.agent_text
+                                }));
+                            resolve();
+                        };
+
+                        navigator.serviceWorker.controller.postMessage(
+                            { type: 'GET_OFFLINE_CONVERSATIONS' },
+                            [channel.port2]
+                        );
+                    });
                 },
                 
                 viewResult(result) {
@@ -504,6 +632,107 @@
                 
                 formatDate(timestamp) {
                     return new Date(timestamp).toLocaleString();
+                },
+
+                // Week 3: Setup offline event handlers
+                setupOfflineHandling() {
+                    window.addEventListener('online', () => {
+                        this.isOffline = false;
+                        this.statusMessage = 'Back online';
+                        // Trigger background sync
+                        if ('sync' in navigator.serviceWorker) {
+                            navigator.serviceWorker.ready.then(registration => {
+                                registration.sync.register('sync-conversations');
+                            });
+                        }
+                    });
+
+                    window.addEventListener('offline', () => {
+                        this.isOffline = true;
+                        this.statusMessage = 'Offline mode - data will sync when online';
+                    });
+                },
+
+                // Week 3: Check service worker status
+                async checkServiceWorker() {
+                    if ('serviceWorker' in navigator) {
+                        try {
+                            const registration = await navigator.serviceWorker.ready;
+                            this.serviceWorkerReady = true;
+
+                            // Get SW version
+                            const channel = new MessageChannel();
+                            channel.port1.onmessage = (event) => {
+                                console.log('Service Worker version:', event.data.version);
+                            };
+
+                            registration.active?.postMessage(
+                                { type: 'GET_VERSION' },
+                                [channel.port2]
+                            );
+                        } catch (error) {
+                            console.error('Service worker not ready:', error);
+                        }
+                    }
+                },
+
+                // Week 3: Store conversation to offline cache
+                async storeConversationOffline(conversation) {
+                    if (!navigator.serviceWorker.controller) return;
+
+                    return new Promise((resolve, reject) => {
+                        const channel = new MessageChannel();
+                        channel.port1.onmessage = (event) => {
+                            if (event.data.success) {
+                                resolve();
+                            } else {
+                                reject(new Error(event.data.error));
+                            }
+                        };
+
+                        navigator.serviceWorker.controller.postMessage(
+                            {
+                                type: 'STORE_CONVERSATION',
+                                payload: {
+                                    session_id: this.sessionId,
+                                    user_text: conversation.user,
+                                    agent_text: conversation.agent,
+                                    timestamp: Date.now()
+                                }
+                            },
+                            [channel.port2]
+                        );
+                    });
+                },
+
+                // Week 3: Load offline conversations on startup
+                async loadOfflineConversations() {
+                    if (!navigator.serviceWorker.controller) return;
+
+                    return new Promise((resolve) => {
+                        const channel = new MessageChannel();
+                        channel.port1.onmessage = (event) => {
+                            const { conversations } = event.data;
+                            if (conversations && conversations.length > 0) {
+                                // Merge with existing conversations
+                                const offlineConvs = conversations
+                                    .filter(c => c.session_id === this.sessionId)
+                                    .map(c => ({
+                                        user: c.user_text,
+                                        agent: c.agent_text,
+                                        timestamp: new Date(c.timestamp),
+                                        offline: true
+                                    }));
+                                this.conversations = [...offlineConvs, ...this.conversations];
+                            }
+                            resolve();
+                        };
+
+                        navigator.serviceWorker.controller.postMessage(
+                            { type: 'GET_OFFLINE_CONVERSATIONS', payload: { session_id: this.sessionId } },
+                            [channel.port2]
+                        );
+                    });
                 }
             }
         }).mount('#app');

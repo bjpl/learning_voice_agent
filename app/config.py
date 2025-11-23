@@ -17,32 +17,47 @@ class Settings(BaseSettings):
     twilio_account_sid: Optional[str] = Field(None, env="TWILIO_ACCOUNT_SID")
     twilio_auth_token: Optional[str] = Field(None, env="TWILIO_AUTH_TOKEN")
     twilio_phone_number: Optional[str] = Field(None, env="TWILIO_PHONE_NUMBER")
-    
+
     # Database
     database_url: str = Field("sqlite:///./learning_captures.db", env="DATABASE_URL")
-    
+
     # Redis
     redis_url: str = Field("redis://localhost:6379", env="REDIS_URL")
     redis_ttl: int = Field(1800, env="REDIS_TTL")  # 30 minutes
-    
+
     # Server
     host: str = Field("0.0.0.0", env="HOST")
     port: int = Field(8000, env="PORT")
     cors_origins: list = Field(["*"], env="CORS_ORIGINS")
-    
+
     # Audio Processing
     whisper_model: str = Field("whisper-1", env="WHISPER_MODEL")
     max_audio_duration: int = Field(60, env="MAX_AUDIO_DURATION")  # seconds
-    
+
     # Claude Configuration
     claude_model: str = Field("claude-3-haiku-20240307", env="CLAUDE_MODEL")
     claude_max_tokens: int = Field(150, env="CLAUDE_MAX_TOKENS")
     claude_temperature: float = Field(0.7, env="CLAUDE_TEMPERATURE")
-    
+
     # Session Management
     session_timeout: int = Field(180, env="SESSION_TIMEOUT")  # 3 minutes
     max_context_exchanges: int = Field(5, env="MAX_CONTEXT_EXCHANGES")
-    
+
+    # Week 3: Vector Database Configuration
+    chroma_persist_directory: str = Field("./chroma_db", env="CHROMA_PERSIST_DIR")
+    embedding_model: str = Field("all-MiniLM-L6-v2", env="EMBEDDING_MODEL")
+    semantic_search_threshold: float = Field(0.5, env="SEMANTIC_SEARCH_THRESHOLD")
+    enable_vector_search: bool = Field(True, env="ENABLE_VECTOR_SEARCH")
+
+    # Week 3: Advanced Prompts Configuration
+    use_chain_of_thought: bool = Field(True, env="USE_CHAIN_OF_THOUGHT")
+    use_few_shot: bool = Field(True, env="USE_FEW_SHOT")
+    prompt_strategy: str = Field("adaptive", env="PROMPT_STRATEGY")  # basic, few_shot, chain_of_thought, adaptive
+
+    # Week 3: Offline/PWA Configuration
+    offline_cache_max_entries: int = Field(100, env="OFFLINE_CACHE_MAX_ENTRIES")
+    enable_offline_mode: bool = Field(True, env="ENABLE_OFFLINE_MODE")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

@@ -1,0 +1,302 @@
+ Hi! Please help me get set up for dev today (SAVE COMPREHENSIVE RESULTS IN A daily_dev_startup_report FILE IN /daily_dev_startup_reports - if the directory doesn't already exist in this project,
+  create it):
+
+        [MANDATORY-GMS-1] DAILY REPORT AUDIT
+        → Check recent commits and ensure each day with commits has an accompanying daily report in /daily_reports
+        → Review recent daily reports in /daily_reports to understand project momentum and context
+        → Identify any gaps in reporting for dates with commit activity
+
+        [MANDATORY-GMS-2] CODE ANNOTATION SCAN
+        → Scan entire codebase for TODO, FIXME, HACK, XXX, and NOTE comments
+        → For each found: note file location, surrounding context, and assess urgency/priority based on what it relates to
+        → Categorize by component: frontend, backend, API, database, deployment, documentation
+
+        [MANDATORY-GMS-3] UNCOMMITTED WORK ANALYSIS
+        → Check git status for any uncommitted or staged changes
+        → If found: analyze what work was in progress, whether it's complete enough to commit, or if it represents incomplete feature that should guide today's priorities
+        → Review stash list for any work in progress that was shelved
+
+        [MANDATORY-GMS-4] ISSUE TRACKER REVIEW
+        → Look for issue trackers (GitHub issues, JIRA references, issue.md files, TODO.md, ROADMAP.md) and review open items
+        → Categorize by priority (P0-critical, P1-high, P2-medium, P3-low) and effort (S-small, M-medium, L-large, XL-extra-large)
+        → Identify any that are blocking or time-sensitive
+        → Cross-reference with recent commits to see what's actively being worked on
+
+        [MANDATORY-GMS-5] TECHNICAL DEBT ASSESSMENT
+        → Assess technical debt by examining:
+          - Code duplication patterns (especially in components, utilities, API clients)
+          - Overly complex functions or files (>300 lines, cyclomatic complexity)
+          - Missing tests or low coverage areas
+          - Outdated dependencies (check package.json, requirements.txt, Pipfile)
+          - Architectural inconsistencies (mixed patterns, inconsistent state management)
+          - Poor separation of concerns (business logic in components, tight coupling)
+          - Security vulnerabilities (outdated packages, exposed secrets)
+        → Prioritize debt that impacts velocity, reliability, or maintainability
+
+        ---
+
+        [API-1] API ENDPOINT INVENTORY
+        → Identify all API endpoints in the project:
+          - REST endpoints (FastAPI, Express, Next.js API routes)
+          - GraphQL schemas/resolvers
+          - Webhook handlers
+          - Third-party API integrations
+        → Check for documentation (OpenAPI/Swagger, docstrings, README)
+        → Verify authentication/authorization implementations
+        → Note any endpoints without tests
+
+        [API-2] EXTERNAL SERVICE DEPENDENCIES
+        → Audit all external service dependencies:
+          - Database connections (PostgreSQL, Supabase, MongoDB)
+          - Authentication providers (Auth0, Supabase Auth, custom)
+          - Cloud services (AWS, Vercel, Netlify, GitHub Pages)
+          - Third-party APIs (payment gateways, data providers, AI services)
+          - CDNs and static asset hosting
+        → Check for API key management and rotation needs
+        → Verify rate limiting and quota usage
+        → Identify any service degradations or deprecation notices
+
+        [API-3] DATA FLOW & STATE MANAGEMENT
+        → Analyze data flow patterns:
+          - Client-side state management (React Context, Redux, Zustand)
+          - Server-side data fetching (SSR, SSG, ISR patterns)
+          - Caching strategies (Redis, in-memory, service workers)
+          - Real-time data (WebSockets, Server-Sent Events, polling)
+        → Identify bottlenecks or inefficient patterns
+        → Check for data consistency issues across services
+
+        ---
+
+        [DEPLOY-1] BUILD & DEPLOYMENT STATUS
+        → Check latest deployment status across all environments:
+          - Development/local builds
+          - Staging/preview deployments
+          - Production deployments
+        → Review build logs for warnings or errors
+        → Verify deployment automation (CI/CD pipelines, GitHub Actions)
+        → Check for failed or pending deployments
+
+        [DEPLOY-2] ENVIRONMENT CONFIGURATION AUDIT
+        → Verify environment variables and secrets:
+          - Check for .env.example or .env.template files
+          - Ensure all required environment variables are documented
+          - Verify no secrets in version control (scan for API keys, passwords)
+          - Check environment-specific configurations (dev, staging, prod)
+        → Identify any missing or outdated configurations
+        → Verify secret rotation schedules
+
+        [DEPLOY-3] INFRASTRUCTURE & HOSTING REVIEW
+        → Review infrastructure setup:
+          - Hosting platforms (Vercel, Netlify, GitHub Pages, AWS, Heroku)
+          - Database hosting (Supabase, AWS RDS, MongoDB Atlas)
+          - Static asset delivery (CDN configuration, caching headers)
+          - SSL/TLS certificate status
+          - Domain and DNS configuration
+        → Check for infrastructure as code (Terraform, CloudFormation)
+        → Verify monitoring and alerting setup (Sentry, LogRocket, Datadog)
+
+        [DEPLOY-4] PERFORMANCE & OPTIMIZATION
+        → Analyze performance metrics:
+          - Build times and bundle sizes
+          - Lighthouse scores (Performance, Accessibility, Best Practices, SEO)
+          - Core Web Vitals (LCP, FID, CLS)
+          - API response times and database query performance
+          - Image optimization and lazy loading implementation
+        → Identify optimization opportunities
+        → Check for performance regression in recent commits
+
+        ---
+
+        [REPO-1] LANGUAGE & FRAMEWORK AUDIT
+        → Identify primary languages and frameworks:
+          - Frontend: React, Next.js, TypeScript, vanilla JavaScript
+          - Backend: Python (FastAPI, Flask, Django), Node.js (Express)
+          - Styling: CSS, SCSS, Tailwind, styled-components
+          - Testing: pytest, Jest, React Testing Library, Playwright
+        → Check version consistency across package managers
+        → Verify framework-specific best practices are followed
+
+        [REPO-2] PROJECT TYPE CLASSIFICATION
+        → Classify project type and architecture:
+          - Web App: Static site, SPA, SSR, SSG, full-stack
+          - Educational: Learning platform, documentation, tutorial
+          - Data/Intelligence: API integration, data processing, analytics
+          - Interactive Tool: Puzzle, game, visualization, utility
+          - Automation: CLI tool, build script, workflow automation
+        → Identify architecture patterns used (MVC, MVVM, JAMstack, microservices)
+
+        [REPO-3] MULTILINGUAL & ACCESSIBILITY FEATURES
+        → Check for internationalization (i18n):
+          - Translation files and language support (Spanish/English)
+          - RTL/LTR layout handling
+          - Locale-specific formatting (dates, numbers, currency)
+        → Review accessibility features:
+          - ARIA labels and semantic HTML
+          - Keyboard navigation support
+          - Screen reader compatibility
+          - Color contrast and typography
+          - Focus management
+
+        ---
+
+        [DEP-1] DEPENDENCY HEALTH CHECK
+        → Audit all dependencies:
+          - npm/yarn: Check package.json for outdated packages (npm outdated)
+          - Python: Check requirements.txt, Pipfile, or pyproject.toml (pip list --outdated)
+        → Identify security vulnerabilities (npm audit, pip-audit, safety check)
+        → Check for breaking changes in major version updates
+        → Review peer dependency warnings
+        → Identify unused dependencies
+
+        [DEP-2] DEVELOPMENT ENVIRONMENT SETUP
+        → Verify development environment consistency:
+          - Node.js version (.nvmrc, package.json engines field)
+          - Python version (.python-version, runtime.txt)
+          - Required system dependencies (PostgreSQL, Redis, etc.)
+          - IDE/editor configurations (.vscode, .editorconfig)
+          - Git hooks (Husky, pre-commit) and linting configurations
+        → Check for onboarding documentation (CONTRIBUTING.md, SETUP.md)
+
+        [DEP-3] PACKAGE MANAGER & BUILD TOOLS
+        → Review package management setup:
+          - Package manager choice (npm, yarn, pnpm, pip, poetry, pipenv)
+          - Lock files status (package-lock.json, yarn.lock, Pipfile.lock)
+          - Build tool configuration (Vite, Webpack, Rollup, esbuild, Parcel)
+          - Task runners (Makefile, npm scripts, just)
+        → Check for build optimization opportunities
+        → Verify reproducible builds across environments
+
+        ---
+
+        [CICD-1] CONTINUOUS INTEGRATION PIPELINE
+        → Review CI configuration:
+          - GitHub Actions: Check .github/workflows/ for workflow files
+          - Other CI: Travis CI, CircleCI, GitLab CI configurations
+        → Verify pipeline stages:
+          - Linting and code formatting (ESLint, Prettier, Black, Flake8)
+          - Type checking (TypeScript, mypy)
+          - Unit and integration testing
+          - Build and bundle creation
+          - Deployment automation
+        → Check for failing workflows or skipped checks
+        → Review pipeline execution times and optimization opportunities
+
+        [CICD-2] AUTOMATED TESTING COVERAGE
+        → Assess testing infrastructure:
+          - Unit test coverage (Jest, pytest)
+          - Integration test coverage (Playwright, Cypress, pytest)
+          - E2E test coverage (Playwright, Selenium)
+          - Visual regression testing (Percy, Chromatic)
+          - Performance testing (Lighthouse CI, k6)
+        → Identify untested critical paths
+        → Check for flaky tests and CI failures
+        → Review test execution time and parallelization
+
+        [CICD-3] DEPLOYMENT AUTOMATION & ROLLBACK
+        → Review deployment automation:
+          - Automatic deployments (main → production, PR → preview)
+          - Manual deployment triggers
+          - Rollback procedures and versioning
+          - Blue-green or canary deployment strategies
+          - Database migration automation
+        → Verify deployment notifications (Slack, Discord, email)
+        → Check for post-deployment smoke tests
+
+        ---
+
+        [DOC-1] README & DOCUMENTATION QUALITY
+        → Audit primary documentation:
+          - README.md completeness (overview, features, setup, usage)
+          - API documentation (OpenAPI, docstrings, JSDoc)
+          - Architecture diagrams and decision records (ADRs)
+          - Component documentation (Storybook, Styleguidist)
+          - Deployment guides and runbooks
+        → Check for outdated or missing documentation
+        → Verify code examples are functional and up-to-date
+
+        [DOC-2] INLINE CODE DOCUMENTATION
+        → Review code-level documentation:
+          - Function/method docstrings (Python, TypeScript)
+          - Complex logic explanations
+          - Type definitions and interfaces
+          - Constants and configuration documentation
+        → Identify poorly documented or confusing code sections
+        → Check for documentation linting (JSDoc, Sphinx)
+
+        [DOC-3] KNOWLEDGE BASE & LEARNING RESOURCES
+        → Check for internal knowledge resources:
+          - Troubleshooting guides (TROUBLESHOOTING.md)
+          - FAQ documentation
+          - Development workflows and conventions
+          - Onboarding materials for new contributors
+          - Changelog and release notes (CHANGELOG.md)
+        → Identify knowledge gaps or undocumented processes
+
+        ---
+
+        [SEC-1] SECURITY VULNERABILITY SCAN
+        → Run security audits:
+          - npm audit for Node.js projects
+          - pip-audit or safety check for Python projects
+          - GitHub Dependabot alerts review
+          - Secret scanning results (GitGuardian, GitHub secret scanning)
+        → Prioritize critical and high-severity vulnerabilities
+        → Check for known CVEs in direct and transitive dependencies
+
+        [SEC-2] AUTHENTICATION & AUTHORIZATION REVIEW
+        → Audit auth implementation:
+          - Authentication methods (JWT, session-based, OAuth, API keys)
+          - Authorization and role-based access control (RBAC)
+          - Password hashing and storage (bcrypt, Argon2)
+          - Session management and token expiration
+          - CSRF and XSS protection measures
+        → Verify security headers (CSP, HSTS, X-Frame-Options)
+        → Check for insecure direct object references (IDOR)
+
+        [SEC-3] DATA PRIVACY & COMPLIANCE
+        → Review data handling practices:
+          - PII (Personally Identifiable Information) handling
+          - Data retention and deletion policies
+          - Privacy policy and terms of service
+          - Cookie consent and tracking compliance (GDPR, CCPA)
+          - Audit logs and user data access controls
+        → Verify encrypted data in transit (HTTPS) and at rest
+        → Check for proper error handling (no sensitive data in logs)
+
+        [SEC-4] CODE QUALITY & BEST PRACTICES
+        → Assess code quality:
+          - Linting configurations (ESLint, Flake8, Pylint)
+          - Code formatting consistency (Prettier, Black)
+          - TypeScript strict mode and type coverage
+          - Proper error handling and logging
+          - Input validation and sanitization
+        → Check for anti-patterns and code smells
+        → Review pull request practices and code review coverage
+
+        ---
+
+        [MANDATORY-GMS-6] PROJECT STATUS REFLECTION
+        → Consider and reflect on overall project status:
+          - Current development phase (planning, active development, testing, maintenance)
+          - Project momentum and velocity trends
+          - Team capacity and resource allocation (if applicable)
+          - Recent achievements and milestones reached
+          - Blockers and impediments to progress
+        → Assess alignment with project goals and roadmap
+
+        [MANDATORY-GMS-7] ALTERNATIVE PLANS PROPOSAL
+        → Propose 3-5 alternative plans for moving forward
+        → Each plan must include:
+          - Clear objective: What will be accomplished
+          - Specific tasks involved: Concrete action items
+          - Estimated effort/complexity: Time and skill level required
+          - Potential risks or dependencies: What could go wrong or block progress
+          - Expected impact: How it advances project goals
+
+        [MANDATORY-GMS-8] RECOMMENDATION WITH RATIONALE
+        → Make your thoughtful recommendation on which plan to pursue
+        → Clear rationale must explain:
+          - Why this plan best advances project goals: Strategic alignment
+          - How it balances short-term progress with long-term maintainability: Technical debt vs. velocity
+          - What makes it the optimal choice given current context: Risk/reward, dependencies, urgency
+          - What success looks like: Measurable outcomes and acceptance criteria

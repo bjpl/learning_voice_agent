@@ -1,0 +1,117 @@
+version: '3.8'
+# Staging Environment Configuration
+# PATTERN: Environment parity with production
+# WHY: Catch issues before production deployment
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: learning-voice-agent:staging
+    container_name: lva-staging-app
+    ports:
+      - "8001:8000"  # Different port from production
+    environment:
+      - ENVIRONMENT=staging
+      - DEBUG=false
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/staging_captures.db
+      - CLAUDE_MODEL=claude-3-haiku-20240307
+      - CLAUDE_MAX_TOKENS=150
+      - SESSION_TIMEOUT=180
+      - LOG_LEVEL=INFO
+    volumes:
+      - staging_data:/app/data
+      - staging_logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  redis:
+    image: redis:7-alpine
+    container_name: lva-staging-redis
+    command: redis-server --appendonly yes --maxmemory 100mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"  # Different port from production
+    volumes:
+      - staging_redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # Session cleanup job (runs periodically)
+  cleanup:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: learning-voice-agent:staging
+    container_name: lva-staging-cleanup
+    command: python scripts/session_cleanup.py --daemon --interval 900
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/staging_captures.db
+    volumes:
+      - staging_data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - staging_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
+  # Nginx reverse proxy for staging
+  nginx:
+    image: nginx:alpine
+    container_name: lva-staging-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.staging.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - staging_network
+
+networks:
+  staging_network:
+    driver: bridge
+
+volumes:
+  staging_data:
+  staging_redis_data:
+  staging_logs:
