@@ -1,4 +1,4 @@
-# Learning Voice Agent 🎙️
+# Learning Voice Agent
 
 [![Tests](https://github.com/bjpl/learning_voice_agent/workflows/Test%20Suite/badge.svg)](https://github.com/bjpl/learning_voice_agent/actions/workflows/test.yml)
 [![Code Quality](https://github.com/bjpl/learning_voice_agent/workflows/Code%20Quality/badge.svg)](https://github.com/bjpl/learning_voice_agent/actions/workflows/lint.yml)
@@ -7,13 +7,13 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Version:** 1.0.0 | **Health Score:** 75/100 🟡 | **Status:** Production-ready (with known limitations)
+**Version:** 1.0.0 | **Health Score:** 75/100 | **Status:** Production-ready (with known limitations)
 
 An AI-powered voice conversation system for capturing and developing learning insights. Built with FastAPI, Claude Haiku, Whisper, and modern web technologies using SPARC methodology.
 
 ---
 
-## ✨ Features
+## Features
 
 ### Core Capabilities
 
@@ -50,15 +50,15 @@ An AI-powered voice conversation system for capturing and developing learning in
 
 ---
 
-## 📚 Complete Documentation
+## Complete Documentation
 
-### 🚀 Getting Started
+### Getting Started
 
 - **[Quick Start Guide](QUICK_START.md)** - Get up and running in 30 minutes
 - **[Development Guide](docs/DEVELOPMENT_GUIDE.md)** - Local setup, debugging, code style, testing
 - **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Railway, Docker, cloud deployment
 
-### 📖 Architecture & Reference
+### Architecture and Reference
 
 - **[Architecture v1.0](docs/ARCHITECTURE_V1.md)** - Complete system architecture with diagrams
 - **[Phase 2 Implementation Guide](docs/PHASE2_IMPLEMENTATION_GUIDE.md)** - Multi-agent system documentation
@@ -77,7 +77,7 @@ An AI-powered voice conversation system for capturing and developing learning in
 - **[API Documentation](docs/API_DOCUMENTATION.md)** - REST, WebSocket, Twilio APIs with examples
 - **[Database Schema](docs/ARCHITECTURE_V1.md#database-schema)** - SQLite + FTS5 + Redis + ChromaDB + Neo4j
 
-### 🗺️ Planning & Roadmap
+### Planning and Roadmap
 
 - **[Migration Plan](docs/MIGRATION_PLAN.md)** - v1.0 → v2.0 migration strategy (20 weeks)
 - **[Rebuild Strategy](docs/REBUILD_STRATEGY.md)** - Comprehensive v2.0 rebuild with multi-agent orchestration
@@ -91,7 +91,7 @@ An AI-powered voice conversation system for capturing and developing learning in
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -121,7 +121,7 @@ An AI-powered voice conversation system for capturing and developing learning in
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -162,7 +162,7 @@ python -m app.main
 
 ---
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 ```bash
 # Build and run with Docker Compose
@@ -175,7 +175,7 @@ docker-compose logs -f app
 docker-compose down
 ```
 
-## 🚂 Railway Deployment (Recommended)
+## Railway Deployment (Recommended)
 
 ```bash
 # Install Railway CLI
@@ -194,7 +194,7 @@ railway up
 
 ---
 
-## 📊 Technology Stack
+## Technology Stack
 
 ### Backend
 - **Framework:** FastAPI 0.109.0 (async Python 3.11+)
@@ -217,7 +217,7 @@ railway up
 
 ---
 
-## 📊 API Endpoints
+## API Endpoints
 
 ### REST API
 
@@ -258,7 +258,7 @@ POST /twilio/process-speech # Speech recognition results
 
 ---
 
-## 🧠 Claude System Prompt
+## Claude System Prompt
 
 The system uses a carefully crafted prompt to make Claude act as a learning companion:
 
@@ -277,7 +277,7 @@ This prompt-first approach means the intelligence comes from the prompt, not com
 
 ---
 
-## 💾 Database Schema
+## Database Schema
 
 ```sql
 -- Conversation captures
@@ -303,7 +303,7 @@ CREATE VIRTUAL TABLE captures_fts USING fts5(
 
 ---
 
-## 🔍 Search Features
+## Search Features
 
 - **Full-text search** with BM25 ranking (SQLite FTS5)
 - **Highlighted snippets** in results (`<mark>` tags)
@@ -318,7 +318,7 @@ curl -X POST http://localhost:8000/api/search \
 
 ---
 
-## 💰 Estimated Costs
+## Estimated Costs
 
 ### Per-Conversation
 - **Whisper:** $0.0005 per 5-second clip
@@ -340,7 +340,7 @@ curl -X POST http://localhost:8000/api/search \
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Project Structure
 
@@ -376,7 +376,7 @@ open htmlcov/index.html
 
 ---
 
-## ⚠️ Known Limitations (v1.0)
+## Known Limitations (v1.0)
 
 ### Functional
 - ❌ No user authentication
@@ -406,9 +406,9 @@ We're planning a comprehensive 20-week rebuild to address these limitations:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome contributions! Here's how:
+Contributions are welcome. Here is how to contribute:
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/amazing-feature`
@@ -421,13 +421,13 @@ We welcome contributions! Here's how:
 
 ---
 
-## 📝 License
+## License
 
 MIT License - See [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **[Anthropic](https://www.anthropic.com/)** - Claude Haiku API
 - **[OpenAI](https://openai.com/)** - Whisper API
@@ -438,7 +438,7 @@ MIT License - See [LICENSE](LICENSE) file for details.
 
 ---
 
-## 📞 Support & Resources
+## Support and Resources
 
 - **Documentation:** [docs/](docs/)
 - **Issues:** [GitHub Issues](https://github.com/bjpl/learning_voice_agent/issues)
@@ -446,7 +446,7 @@ MIT License - See [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 ### v1.0 (Current - Production)
 - ✅ Voice conversation with Claude Haiku
@@ -559,6 +559,4 @@ MIT License - See [LICENSE](LICENSE) file for details.
 
 ---
 
-**Built with ❤️ using SPARC methodology and modern AI technologies**
-
-**Current Status:** ✅ Production-ready v1.0 with comprehensive documentation | 🔄 v2.0 rebuild planned
+**Current Status:** Production-ready v1.0 with comprehensive documentation | v2.0 rebuild planned

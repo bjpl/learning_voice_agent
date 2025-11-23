@@ -85,6 +85,14 @@ audit_results.json
 node_modules/
 package-lock.json
 
+# Playwright E2E Testing
+playwright-report/
+playwright-results.json
+test-results/
+tests/e2e/fixtures/.auth/
+blob-report/
+.playwright/
+
 # Documentation builds
 docs/_build/
 site/
