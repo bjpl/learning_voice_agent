@@ -46,9 +46,41 @@ class TwilioHandler:
         """
         PATTERN: Request validation for security
         WHY: Ensure requests are from Twilio
+
+        SECURITY FIX: Fail closed when validator not configured
+        Previous behavior (insecure): return True when no validator
+        Current behavior (secure): return False when no validator
         """
+        import os
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         if not self.validator:
-            return True  # Skip validation in dev
+            # SECURITY: Fail closed - reject if not properly configured
+            environment = os.getenv("ENVIRONMENT", "development").lower()
+
+            if environment == "production":
+                logger.error(
+                    "SECURITY: Twilio validator not configured in production! "
+                    "Set TWILIO_AUTH_TOKEN environment variable. Rejecting request."
+                )
+                return False
+
+            # In development, warn but allow (with explicit opt-in)
+            allow_unvalidated = os.getenv("TWILIO_ALLOW_UNVALIDATED", "false").lower() == "true"
+            if allow_unvalidated:
+                logger.warning(
+                    "SECURITY WARNING: Twilio validation disabled in development. "
+                    "This should NEVER happen in production."
+                )
+                return True
+            else:
+                logger.warning(
+                    "Twilio validator not configured. Set TWILIO_AUTH_TOKEN or "
+                    "TWILIO_ALLOW_UNVALIDATED=true for development."
+                )
+                return False
             
         signature = request.headers.get('X-Twilio-Signature', '')
         url = str(request.url)

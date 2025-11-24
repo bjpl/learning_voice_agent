@@ -38,6 +38,18 @@ from app.models import (
 )
 from app.twilio_handler import setup_twilio_routes
 
+# Plan A: Security Integration
+from app.security.routes import setup_security_routes
+from app.security.legal_routes import setup_legal_routes
+from app.security.cors import configure_cors, get_cors_origins
+from app.security.rate_limit import RateLimitMiddleware
+from app.security.dependencies import websocket_auth
+from app.security.headers import (
+    SecurityHeadersMiddleware,
+    WebSocketOriginValidator,
+    get_websocket_origin_validator,
+)
+
 # Week 2: Import resilient Redis client
 resilient_redis = None
 try:
@@ -114,14 +126,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Plan A: Configure secure CORS (replaces wildcard ["*"])
+configure_cors(app)
+
+# Plan A: Add rate limiting middleware
+if settings.rate_limit_enabled:
+    app.add_middleware(RateLimitMiddleware)
+    logger.info("Rate limiting enabled")
+
+# Plan A: Add security headers middleware
+if settings.security_headers_enabled:
+    app.add_middleware(SecurityHeadersMiddleware)
+    logger.info("Security headers middleware enabled")
 
 # Week 4: Add production middleware for monitoring and caching
 if ADMIN_AVAILABLE:
@@ -400,11 +416,34 @@ async def update_conversation_state(
     await state_manager.update_session_metadata(session_id, metadata)
 
 @app.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    session_id: str,
+    user = Depends(websocket_auth)  # Plan A: WebSocket authentication
+):
     """
     PATTERN: WebSocket for real-time audio streaming
     WHY: Lower latency than REST for continuous conversation
+
+    Plan A: Now requires authentication via token
+    - Pass token as query param: /ws/{session_id}?token=xxx
+    - Or in Authorization header: Bearer xxx
+
+    Security: WebSocket origin validation
+    - Validates Origin header against CORS_ORIGINS
+    - Rejects unauthorized origins with 403
     """
+    # Plan A: Validate WebSocket origin
+    if settings.websocket_origin_validation:
+        validator = get_websocket_origin_validator()
+        if not validator.is_valid_origin(websocket):
+            logger.warning(
+                f"WebSocket connection rejected - invalid origin: "
+                f"{websocket.headers.get('origin', 'none')}"
+            )
+            await websocket.close(code=4003)  # 4003 = Policy Violation
+            return
+
     await websocket.accept()
     
     try:
@@ -634,6 +673,11 @@ async def get_offline_manifest() -> Dict:
 
 # Setup Twilio routes
 setup_twilio_routes(app)
+
+# Plan A: Setup security routes (auth, GDPR, legal)
+setup_security_routes(app)
+setup_legal_routes(app)
+logger.info("Security routes configured: /api/auth, /api/gdpr, /api/user, /legal")
 
 # Serve static files (PWA)
 app.mount("/static", StaticFiles(directory="static"), name="static")

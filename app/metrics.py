@@ -540,7 +540,10 @@ class MetricsCollector:
         try:
             samples = counter.collect()[0].samples
             return sum(sample.value for sample in samples)
-        except:
+        except (IndexError, AttributeError, TypeError) as e:
+            # IndexError: No samples collected yet
+            # AttributeError: Counter not properly initialized
+            # TypeError: Unexpected sample structure
             return 0.0
 
     def _get_gauge_value(self, gauge: Gauge) -> float:
@@ -548,7 +551,10 @@ class MetricsCollector:
         try:
             samples = gauge.collect()[0].samples
             return sum(sample.value for sample in samples)
-        except:
+        except (IndexError, AttributeError, TypeError) as e:
+            # IndexError: No samples collected yet
+            # AttributeError: Gauge not properly initialized
+            # TypeError: Unexpected sample structure
             return 0.0
 
 

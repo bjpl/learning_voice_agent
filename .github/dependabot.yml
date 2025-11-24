@@ -1,0 +1,120 @@
+# Dependabot Configuration
+# Automated dependency updates for security and feature improvements
+#
+# Documentation: https://docs.github.com/en/code-security/dependabot
+
+version: 2
+updates:
+  # Python dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(python)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    reviewers:
+      - "bjpl"
+    # Group minor and patch updates together
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Ignore specific packages that require manual review
+    ignore:
+      # OpenAI API changes often require code updates
+      - dependency-name: "openai"
+        update-types: ["version-update:semver-major"]
+      # Anthropic API changes often require code updates
+      - dependency-name: "anthropic"
+        update-types: ["version-update:semver-major"]
+      # FastAPI major updates may have breaking changes
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-major"]
+      # Pydantic v2 is a major rewrite
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+    # Security updates get priority
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "production"
+
+  # NPM dependencies (frontend)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(npm)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "frontend"
+    reviewers:
+      - "bjpl"
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Vue major updates require careful migration
+      - dependency-name: "vue"
+        update-types: ["version-update:semver-major"]
+      # Vite major updates may have config changes
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(actions)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"
+      - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"

@@ -869,7 +869,10 @@ class InsightsEngine:
             # Get session metrics for the week
             try:
                 weekly_metrics = await progress_tracker.get_progress_metrics()
-            except:
+            except (AttributeError, RuntimeError, ValueError):
+                # AttributeError: progress_tracker not properly initialized
+                # RuntimeError: async context or database issues
+                # ValueError: invalid parameter values
                 weekly_metrics = None
 
             # Calculate totals from daily progress
@@ -885,7 +888,10 @@ class InsightsEngine:
                         total_exchanges += dp.total_exchanges
                         if dp.avg_quality_score > 0:
                             quality_scores.append(dp.avg_quality_score)
-                except:
+                except (AttributeError, RuntimeError, TypeError):
+                    # AttributeError: progress_tracker missing method
+                    # RuntimeError: async issues
+                    # TypeError: unexpected data structure
                     pass
 
             avg_quality = statistics.mean(quality_scores) if quality_scores else 0.5
@@ -1387,7 +1393,11 @@ class InsightsEngine:
                                     threshold=float(threshold)
                                 ))
                                 break
-                except:
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    # AttributeError: progress_tracker missing method
+                    # RuntimeError: async issues
+                    # TypeError: unexpected data structure
+                    # ValueError: invalid metric values
                     pass
 
         except Exception as e:

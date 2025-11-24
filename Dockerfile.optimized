@@ -1,13 +1,21 @@
-# Multi-stage build optimized for CI/CD
+# Multi-stage build optimized for Production
+# Learning Voice Agent v2.0.0
+# Last Updated: November 23, 2025
+
+# =============================================================================
+# Stage 1: Builder - Install dependencies
+# =============================================================================
 FROM python:3.11-slim as builder
 
 WORKDIR /app
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
+    libffi-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements first for better caching
@@ -18,34 +26,55 @@ RUN pip install --user --no-cache-dir --no-warn-script-location \
     --disable-pip-version-check \
     -r requirements.txt
 
-# Production stage - minimal image
+# Install gunicorn for production
+RUN pip install --user --no-cache-dir gunicorn==21.2.0
+
+# =============================================================================
+# Stage 2: Production - Minimal runtime image
+# =============================================================================
 FROM python:3.11-slim
+
+# Labels for container registry
+LABEL maintainer="Learning Voice Agent Team"
+LABEL version="2.0.0"
+LABEL description="AI-powered voice conversation for learning capture"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH=/root/.local/bin:$PATH \
-    PORT=8000
+    PYTHONFAULTHANDLER=1 \
+    PATH=/home/appuser/.local/bin:$PATH \
+    PORT=8000 \
+    WORKERS=4 \
+    ENVIRONMENT=production
 
 WORKDIR /app
 
 # Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
+    tini \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+    && apt-get clean \
+    && apt-get autoremove -y
 
 # Create non-root user for security
-RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/data && \
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser appuser && \
+    mkdir -p /app/data /app/logs && \
     chown -R appuser:appuser /app
+
+# Copy Python dependencies from builder
+COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
 COPY --chown=appuser:appuser app/ ./app/
 COPY --chown=appuser:appuser static/ ./static/
+
+# Create data directories
+RUN mkdir -p /app/data/chroma /app/data/uploads && \
+    chown -R appuser:appuser /app/data
 
 # Switch to non-root user
 USER appuser
@@ -54,8 +83,11 @@ USER appuser
 EXPOSE 8000
 
 # Health check for container orchestration
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Run with production-ready settings
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "info"]
+# Use tini as init system for proper signal handling
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# Run with gunicorn for production (workers configurable via env)
+CMD ["sh", "-c", "gunicorn app.main:app --workers ${WORKERS:-4} --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --graceful-timeout 30 --keep-alive 5 --access-logfile - --error-logfile - --capture-output"]

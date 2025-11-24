@@ -190,6 +190,292 @@ class SyncService:
                 if row['key'] == 'last_sync':
                     self._last_sync = datetime.fromisoformat(row['value'])
 
+    async def _init_change_tracking(self) -> None:
+        """
+        Initialize change tracking tables
+
+        PATTERN: Event sourcing for change tracking
+        WHY: Full audit trail and conflict detection capability
+        """
+        async with aiosqlite.connect(self.sync_db_path) as db:
+            # Change log table for tracking all modifications
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS change_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    change_id TEXT UNIQUE NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    old_value TEXT,
+                    new_value TEXT,
+                    version INTEGER NOT NULL,
+                    device_id TEXT,
+                    timestamp TEXT NOT NULL,
+                    synced INTEGER DEFAULT 0
+                )
+            """)
+
+            # Version tracking table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS entity_versions (
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    last_modified TEXT NOT NULL,
+                    PRIMARY KEY (entity_type, entity_id)
+                )
+            """)
+
+            # Indexes for efficient queries
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_change_entity
+                ON change_log(entity_type, entity_id)
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_change_timestamp
+                ON change_log(timestamp)
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_change_synced
+                ON change_log(synced)
+            """)
+
+            await db.commit()
+
+        logger.info("change_tracking_initialized")
+
+    async def track_change(
+        self,
+        entity_type: str,
+        entity_id: str,
+        operation: str,
+        old_value: Optional[Dict[str, Any]] = None,
+        new_value: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Track a change to an entity
+
+        PATTERN: Event sourcing with versioning
+        WHY: Enable conflict detection and audit trail
+
+        Args:
+            entity_type: Type of entity (capture, goal, feedback)
+            entity_id: Unique entity identifier
+            operation: Operation type (create, update, delete)
+            old_value: Previous value (for update/delete)
+            new_value: New value (for create/update)
+
+        Returns:
+            Change record with version information
+        """
+        await self.initialize()
+
+        change_id = str(uuid.uuid4())[:12]
+        timestamp = datetime.utcnow().isoformat()
+
+        async with aiosqlite.connect(self.sync_db_path) as db:
+            # Get or create version
+            cursor = await db.execute("""
+                SELECT version FROM entity_versions
+                WHERE entity_type = ? AND entity_id = ?
+            """, (entity_type, entity_id))
+
+            row = await cursor.fetchone()
+            current_version = row[0] if row else 0
+            new_version = current_version + 1
+
+            # Insert change log entry
+            await db.execute("""
+                INSERT INTO change_log
+                (change_id, entity_type, entity_id, operation, old_value, new_value, version, device_id, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                change_id,
+                entity_type,
+                entity_id,
+                operation,
+                json.dumps(old_value) if old_value else None,
+                json.dumps(new_value) if new_value else None,
+                new_version,
+                self._current_device_id,
+                timestamp
+            ))
+
+            # Update version tracking
+            await db.execute("""
+                INSERT INTO entity_versions (entity_type, entity_id, version, last_modified)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                    version = excluded.version,
+                    last_modified = excluded.last_modified
+            """, (entity_type, entity_id, new_version, timestamp))
+
+            await db.commit()
+
+        change = {
+            "change_id": change_id,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "operation": operation,
+            "version": new_version,
+            "timestamp": timestamp,
+            "device_id": self._current_device_id
+        }
+
+        logger.info(
+            "change_tracked",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            operation=operation,
+            version=new_version
+        )
+
+        return change
+
+    async def get_changes(
+        self,
+        entity_type: Optional[str] = None,
+        since: Optional[datetime] = None,
+        unsynced_only: bool = False,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get change history with optional filters
+
+        Args:
+            entity_type: Filter by entity type
+            since: Filter by timestamp
+            unsynced_only: Only return unsynced changes
+            limit: Maximum number of changes to return
+
+        Returns:
+            List of change records
+        """
+        await self.initialize()
+
+        query = "SELECT * FROM change_log WHERE 1=1"
+        params = []
+
+        if entity_type:
+            query += " AND entity_type = ?"
+            params.append(entity_type)
+
+        if since:
+            query += " AND timestamp >= ?"
+            params.append(since.isoformat())
+
+        if unsynced_only:
+            query += " AND synced = 0"
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        async with aiosqlite.connect(self.sync_db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+
+            changes = []
+            for row in rows:
+                change = {
+                    "change_id": row["change_id"],
+                    "entity_type": row["entity_type"],
+                    "entity_id": row["entity_id"],
+                    "operation": row["operation"],
+                    "old_value": json.loads(row["old_value"]) if row["old_value"] else None,
+                    "new_value": json.loads(row["new_value"]) if row["new_value"] else None,
+                    "version": row["version"],
+                    "device_id": row["device_id"],
+                    "timestamp": row["timestamp"],
+                    "synced": bool(row["synced"])
+                }
+                changes.append(change)
+
+            return changes
+
+    async def get_entity_version(self, entity_type: str, entity_id: str) -> int:
+        """Get current version of an entity"""
+        await self.initialize()
+
+        async with aiosqlite.connect(self.sync_db_path) as db:
+            cursor = await db.execute("""
+                SELECT version FROM entity_versions
+                WHERE entity_type = ? AND entity_id = ?
+            """, (entity_type, entity_id))
+
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+    async def generate_diff(
+        self,
+        old_value: Optional[Dict[str, Any]],
+        new_value: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Generate diff between two values
+
+        PATTERN: Field-level change detection
+        WHY: Precise conflict identification and merge support
+
+        Returns:
+            Diff with added, removed, and modified fields
+        """
+        diff = {
+            "added": {},
+            "removed": {},
+            "modified": {}
+        }
+
+        old_keys = set(old_value.keys()) if old_value else set()
+        new_keys = set(new_value.keys()) if new_value else set()
+
+        # Added keys
+        for key in new_keys - old_keys:
+            diff["added"][key] = new_value[key]
+
+        # Removed keys
+        for key in old_keys - new_keys:
+            diff["removed"][key] = old_value[key]
+
+        # Modified keys
+        for key in old_keys & new_keys:
+            if old_value[key] != new_value[key]:
+                diff["modified"][key] = {
+                    "old": old_value[key],
+                    "new": new_value[key]
+                }
+
+        return diff
+
+    async def mark_changes_synced(self, change_ids: List[str]) -> int:
+        """Mark changes as synced"""
+        if not change_ids:
+            return 0
+
+        await self.initialize()
+
+        placeholders = ",".join("?" * len(change_ids))
+        async with aiosqlite.connect(self.sync_db_path) as db:
+            cursor = await db.execute(f"""
+                UPDATE change_log SET synced = 1
+                WHERE change_id IN ({placeholders})
+            """, change_ids)
+
+            await db.commit()
+            return cursor.rowcount
+
+    async def _get_pending_changes_count(self) -> int:
+        """Get count of unsynced changes"""
+        try:
+            async with aiosqlite.connect(self.sync_db_path) as db:
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM change_log WHERE synced = 0"
+                )
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+        except Exception:
+            return 0
+
     async def _save_state(self, key: str, value: str) -> None:
         """Save sync state to database"""
         async with aiosqlite.connect(self.sync_db_path) as db:
@@ -223,7 +509,7 @@ class SyncService:
             device_count=len(self._devices),
             data_size_bytes=data_size,
             data_size_human=format_file_size(data_size),
-            pending_changes=0,  # TODO: Implement change tracking
+            pending_changes=await self._get_pending_changes_count(),
             conflicts_count=len(self._conflicts),
             backup_enabled=backup_scheduler.is_enabled,
             backup_interval_hours=backup_scheduler.interval_hours if backup_scheduler.is_enabled else None

@@ -10,7 +10,9 @@ jinja2==3.1.3
 websockets==12.0
 
 # AI/ML APIs
-anthropic==0.18.1
+# NOTE: anthropic updated for security and API compatibility
+# Breaking change: Use client.messages.create() instead of client.completion()
+anthropic>=0.50.0
 openai==1.10.0
 
 # Telephony
@@ -36,6 +38,12 @@ sqlalchemy[asyncio]==2.0.25
 bandit==1.7.7
 safety==2.3.5
 
+# Security (Plan A)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+# Updated cryptography for CVE fixes (was 41.0.7)
+cryptography>=42.0.0
+
 # Week 3: Vector Database and Embeddings
 chromadb==0.4.22
 sentence-transformers==2.3.1
@@ -49,3 +57,6 @@ locust==2.24.0
 psutil==5.9.8
 ruff==0.1.14
 mypy==1.8.0
+
+# Security: XXE Protection
+defusedxml>=0.7.1

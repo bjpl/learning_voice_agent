@@ -7,7 +7,7 @@ WHY: Enable agents to access external knowledge sources (web, papers, databases,
 
 import asyncio
 import json
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 from typing import Dict, Any, List, Optional, Callable
 from datetime import datetime, timedelta
 import httpx

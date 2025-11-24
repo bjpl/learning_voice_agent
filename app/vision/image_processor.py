@@ -404,7 +404,9 @@ class ImageProcessor:
                     if isinstance(value, bytes):
                         try:
                             value = value.decode()
-                        except:
+                        except (UnicodeDecodeError, AttributeError):
+                            # UnicodeDecodeError: bytes cannot be decoded as UTF-8
+                            # AttributeError: value doesn't have decode method
                             value = str(value)
                     exif_data[tag] = value
 

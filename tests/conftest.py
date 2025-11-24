@@ -6,6 +6,7 @@ import pytest
 import asyncio
 import os
 import sys
+import time
 from typing import AsyncGenerator, Generator, Dict, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
@@ -326,3 +327,41 @@ def twilio_speech_form_data() -> Dict[str, str]:
 
 # Async test support
 pytest_plugins = ['pytest_asyncio']
+
+
+# FastAPI TestClient fixture
+@pytest.fixture
+def client():
+    """Create FastAPI TestClient for integration tests."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+# Timing fixture for performance tests
+class TimingContext:
+    """Context manager for timing code execution."""
+    def __init__(self):
+        self.elapsed = 0.0
+        self._start = None
+
+    def __enter__(self):
+        self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, *args):
+        self.elapsed = time.perf_counter() - self._start
+
+
+@pytest.fixture
+def timing():
+    """Provide timing context for performance tests."""
+    return TimingContext()
+
+
+# Alias for test_db (used by some tests)
+@pytest.fixture
+async def test_db(test_database):
+    """Alias for test_database fixture."""
+    return test_database

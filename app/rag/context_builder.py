@@ -405,7 +405,10 @@ class ContextBuilder:
             try:
                 timestamp = datetime.fromisoformat(doc.timestamp)
                 time_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            except:
+            except (ValueError, TypeError, AttributeError):
+                # ValueError: Invalid ISO format string
+                # TypeError: timestamp is not a string
+                # AttributeError: timestamp doesn't have expected attributes
                 time_str = doc.timestamp
 
             # Age display

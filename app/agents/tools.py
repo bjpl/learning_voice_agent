@@ -177,29 +177,79 @@ class ToolRegistry:
 
     async def _handle_search(self, query: str, limit: int = 5, context: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Handle search tool execution
+        Handle search tool execution with ChromaDB vector search
 
-        TODO: Integrate with actual knowledge base/vector search
-        For now, returns mock results based on context
+        PATTERN: Semantic vector search with fallback
+        WHY: Enable intelligent context retrieval from past conversations
         """
         conversation_logger.info("search_tool_executed", query=query, limit=limit)
 
-        # Mock implementation - in production, would query vector database
         results = []
+        similarity_threshold = 0.7  # Minimum relevance for results
 
-        if context and "conversation_history" in context:
-            history = context["conversation_history"]
-            # Simple text search through history
-            for exchange in history[-limit:]:
-                user_text = exchange.get("user", "")
-                agent_text = exchange.get("agent", "")
+        try:
+            # Try vector search first
+            from app.vector.vector_store import vector_store
 
-                if query.lower() in user_text.lower() or query.lower() in agent_text.lower():
+            # Initialize if needed
+            if not vector_store._initialized:
+                await vector_store.initialize()
+
+            # Get session filter if available
+            session_id = context.get("session_id") if context else None
+            metadata_filter = {"session_id": session_id} if session_id else None
+
+            # Search using vector store
+            search_results = await vector_store.search_similar(
+                collection_name="conversations",
+                query_text=query,
+                n_results=limit * 2,  # Get more to filter by threshold
+                metadata_filter=metadata_filter,
+                include_distances=True
+            )
+
+            # Filter by similarity threshold and format results
+            for result in search_results:
+                similarity = result.get("similarity", 0)
+                if similarity >= similarity_threshold:
+                    metadata = result.get("metadata", {})
                     results.append({
-                        "user": user_text,
-                        "agent": agent_text,
-                        "relevance": 0.8  # Mock relevance score
+                        "user": metadata.get("user_text", ""),
+                        "agent": metadata.get("agent_text", ""),
+                        "relevance": round(similarity, 3),
+                        "timestamp": metadata.get("timestamp"),
+                        "session_id": metadata.get("session_id")
                     })
+
+                    if len(results) >= limit:
+                        break
+
+            conversation_logger.info(
+                "vector_search_completed",
+                query=query,
+                results_found=len(results)
+            )
+
+        except Exception as e:
+            conversation_logger.warning(
+                "vector_search_fallback",
+                error=str(e),
+                fallback="context_search"
+            )
+
+            # Fallback to context-based search
+            if context and "conversation_history" in context:
+                history = context["conversation_history"]
+                for exchange in history[-limit:]:
+                    user_text = exchange.get("user", "")
+                    agent_text = exchange.get("agent", "")
+
+                    if query.lower() in user_text.lower() or query.lower() in agent_text.lower():
+                        results.append({
+                            "user": user_text,
+                            "agent": agent_text,
+                            "relevance": 0.75  # Keyword match relevance
+                        })
 
         return {
             "success": True,
@@ -291,10 +341,10 @@ class ToolRegistry:
 
     async def _handle_memory(self, action: str, key: str, value: Optional[str] = None, context: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Handle memory tool execution
+        Handle memory tool execution with persistent storage
 
-        TODO: Integrate with actual persistent storage
-        Currently uses in-memory context storage
+        PATTERN: Database-backed persistent storage with in-memory cache
+        WHY: Enable cross-session memory persistence and retrieval
         """
         conversation_logger.info("memory_tool_executed", action=action, key=key)
 
@@ -305,6 +355,7 @@ class ToolRegistry:
             context["memory_store"] = {}
 
         memory_store = context["memory_store"]
+        session_id = context.get("session_id", "default")
 
         if action == "store":
             if value is None:
@@ -313,10 +364,30 @@ class ToolRegistry:
                     "error": "Value required for store action"
                 }
 
+            timestamp = datetime.utcnow().isoformat()
+
+            # Store in local context
             memory_store[key] = {
                 "value": value,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": timestamp,
+                "session_id": session_id
             }
+
+            # Persist to database
+            try:
+                await self._persist_memory(key, value, session_id, timestamp)
+                conversation_logger.info(
+                    "memory_persisted",
+                    key=key,
+                    session_id=session_id
+                )
+            except Exception as e:
+                conversation_logger.warning(
+                    "memory_persistence_failed",
+                    key=key,
+                    error=str(e)
+                )
+                # Continue with in-memory storage even if persistence fails
 
             return {
                 "success": True,
@@ -326,6 +397,7 @@ class ToolRegistry:
             }
 
         elif action == "retrieve":
+            # Check local cache first
             if key in memory_store:
                 stored = memory_store[key]
                 return {
@@ -335,16 +407,139 @@ class ToolRegistry:
                     "value": stored["value"],
                     "timestamp": stored["timestamp"]
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": f"No memory found for key: {key}"
-                }
+
+            # Try to retrieve from database
+            try:
+                db_value = await self._retrieve_memory(key, session_id)
+                if db_value:
+                    # Cache the retrieved value
+                    memory_store[key] = db_value
+                    return {
+                        "success": True,
+                        "action": "retrieved",
+                        "key": key,
+                        "value": db_value["value"],
+                        "timestamp": db_value["timestamp"]
+                    }
+            except Exception as e:
+                conversation_logger.warning(
+                    "memory_retrieval_failed",
+                    key=key,
+                    error=str(e)
+                )
+
+            return {
+                "success": False,
+                "error": f"No memory found for key: {key}"
+            }
 
         return {
             "success": False,
             "error": f"Unknown action: {action}"
         }
+
+    async def _persist_memory(self, key: str, value: str, session_id: str, timestamp: str) -> None:
+        """
+        Persist memory to SQLite database
+
+        PATTERN: Async database write with upsert
+        WHY: Enable cross-session persistence
+        """
+        import aiosqlite
+        from pathlib import Path
+
+        db_path = Path("research_memory.db")
+
+        async with aiosqlite.connect(str(db_path)) as db:
+            # Create table if not exists
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS memory_store (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    value TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(session_id, key)
+                )
+            """)
+
+            # Create indexes for efficient queries
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_memory_session
+                ON memory_store(session_id)
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_memory_key
+                ON memory_store(key)
+            """)
+
+            # Upsert the value
+            await db.execute("""
+                INSERT INTO memory_store (session_id, key, value, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(session_id, key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+            """, (session_id, key, value, timestamp, timestamp))
+
+            await db.commit()
+
+    async def _retrieve_memory(self, key: str, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve memory from SQLite database
+
+        PATTERN: Async database read with session fallback
+        WHY: Check session-specific first, then global
+        """
+        import aiosqlite
+        from pathlib import Path
+
+        db_path = Path("research_memory.db")
+
+        if not db_path.exists():
+            return None
+
+        async with aiosqlite.connect(str(db_path)) as db:
+            db.row_factory = aiosqlite.Row
+
+            # Try session-specific first
+            cursor = await db.execute("""
+                SELECT value, updated_at as timestamp
+                FROM memory_store
+                WHERE key = ? AND session_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """, (key, session_id))
+
+            row = await cursor.fetchone()
+
+            if row:
+                return {
+                    "value": row["value"],
+                    "timestamp": row["timestamp"],
+                    "session_id": session_id
+                }
+
+            # Fall back to any session
+            cursor = await db.execute("""
+                SELECT value, updated_at as timestamp, session_id
+                FROM memory_store
+                WHERE key = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """, (key,))
+
+            row = await cursor.fetchone()
+
+            if row:
+                return {
+                    "value": row["value"],
+                    "timestamp": row["timestamp"],
+                    "session_id": row["session_id"]
+                }
+
+        return None
 
 
 # Global tool registry instance

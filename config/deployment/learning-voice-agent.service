@@ -1,0 +1,92 @@
+# Systemd Service Configuration for Learning Voice Agent
+# Location: /etc/systemd/system/learning-voice-agent.service
+#
+# Installation:
+#   sudo cp learning-voice-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable learning-voice-agent
+#   sudo systemctl start learning-voice-agent
+#
+# Management:
+#   sudo systemctl status learning-voice-agent
+#   sudo systemctl restart learning-voice-agent
+#   sudo journalctl -u learning-voice-agent -f
+
+[Unit]
+Description=Learning Voice Agent - AI-powered voice conversation
+Documentation=https://github.com/bjpl/learning_voice_agent
+After=network.target redis.service postgresql.service
+Wants=redis.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+
+# User and permissions
+User=www-data
+Group=www-data
+
+# Working directory
+WorkingDirectory=/opt/learning-voice-agent
+
+# Environment file (contains secrets)
+EnvironmentFile=/opt/learning-voice-agent/.env
+
+# Virtual environment
+Environment="PATH=/opt/learning-voice-agent/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="PYTHONPATH=/opt/learning-voice-agent"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+
+# Process configuration
+ExecStart=/opt/learning-voice-agent/venv/bin/gunicorn app.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --timeout 120 \
+    --graceful-timeout 30 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --access-logfile /var/log/learning-voice-agent/access.log \
+    --error-logfile /var/log/learning-voice-agent/error.log \
+    --capture-output \
+    --enable-stdio-inheritance
+
+# Graceful shutdown
+ExecStop=/bin/kill -s TERM $MAINPID
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/opt/learning-voice-agent/data
+ReadWritePaths=/var/log/learning-voice-agent
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=learning-voice-agent
+
+[Install]
+WantedBy=multi-user.target

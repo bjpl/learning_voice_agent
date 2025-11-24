@@ -1,0 +1,43 @@
+{
+  "name": "learning-voice-agent",
+  "version": "1.0.0",
+  "description": "AI-powered voice conversation agent for learning capture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:chromium": "playwright test --project=chromium",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "test:e2e:webkit": "playwright test --project=webkit",
+    "test:e2e:api": "playwright test --project=api",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:install": "playwright install --with-deps",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:test": "cd frontend && npm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.1",
+    "@types/node": "^20.11.5",
+    "typescript": "~5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bjpl/learning_voice_agent.git"
+  },
+  "keywords": [
+    "voice-agent",
+    "learning",
+    "ai",
+    "conversation",
+    "playwright",
+    "e2e-testing"
+  ],
+  "license": "MIT"
+}

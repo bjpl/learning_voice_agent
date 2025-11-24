@@ -16,7 +16,7 @@ class Database:
     def __init__(self, db_path: str = "learning_captures.db"):
         self.db_path = db_path
         self._initialized = False
-        logger.info("database_created", db_path=db_path)
+        logger.info(f"database_created: {db_path}")
 
     async def initialize(self):
         """
