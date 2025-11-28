@@ -502,13 +502,12 @@ def trend_analyzer(analytics_config_fixture):
 
 
 @pytest.fixture
-def dashboard_service(analytics_config_fixture, progress_tracker, insights_engine):
-    """DashboardService with mocked dependencies."""
+def dashboard_service(analytics_config_fixture):
+    """DashboardService with default config."""
     from app.analytics.dashboard_service import DashboardService
     return DashboardService(
-        config=analytics_config_fixture,
-        progress_tracker=progress_tracker,
-        insights_engine=insights_engine
+        config=analytics_config_fixture.dashboard if hasattr(analytics_config_fixture, 'dashboard') else None,
+        cache_ttl=300
     )
 
 
@@ -574,7 +573,7 @@ def freeze_time():
 # ============================================================================
 
 @pytest.fixture(autouse=True)
-async def cleanup():
+def cleanup():
     """Cleanup after each test."""
     yield
     # Add any cleanup logic here if needed

@@ -445,7 +445,7 @@ def timing():
 
 # Alias for test_db (used by some tests)
 @pytest.fixture
-async def test_db(test_database):
+def test_db(test_database):
     """Alias for test_database fixture."""
     return test_database
 
@@ -501,7 +501,7 @@ def mock_neo4j_driver():
 
 
 @pytest.fixture
-async def mock_knowledge_graph_store(mock_neo4j_driver):
+def mock_knowledge_graph_store(mock_neo4j_driver):
     """Mock KnowledgeGraphStore instance"""
     from app.knowledge_graph.graph_store import KnowledgeGraphStore
     from app.knowledge_graph.config import KnowledgeGraphConfig
@@ -591,7 +591,7 @@ def mock_chroma_client():
 
 
 @pytest.fixture
-async def mock_vector_store(mock_chroma_client):
+def mock_vector_store(mock_chroma_client):
     """Mock VectorStore instance"""
     from app.vector.vector_store import VectorStore
 
@@ -676,7 +676,7 @@ def sample_conversation_context():
 
 
 @pytest.fixture
-async def conversation_agent():
+def conversation_agent():
     """ConversationAgent instance for testing"""
     from app.agents.conversation_agent import ConversationAgent
     agent = ConversationAgent()
@@ -685,31 +685,32 @@ async def conversation_agent():
     mock_message = MagicMock()
     mock_message.content = [MagicMock(text="Test response from agent")]
     agent.client.messages.create = AsyncMock(return_value=mock_message)
-    yield agent
-    await agent.cleanup()
+    agent._initialized = True
+    return agent
 
 
 @pytest.fixture
-async def orchestrator(mock_anthropic_client):
+def orchestrator(mock_anthropic_client):
     """AgentOrchestrator instance for testing"""
     from app.agents.orchestrator import AgentOrchestrator
     from app.agents.conversation_agent import ConversationAgent
 
-    orchestrator = AgentOrchestrator()
-    await orchestrator.start()
+    orch = AgentOrchestrator()
+    orch._initialized = True
 
-    # Register conversation agent with mocked client
+    # Create conversation agent with mocked client
     agent = ConversationAgent()
     agent.client = mock_anthropic_client
-    await orchestrator.register_agent(agent, capabilities=["conversation"])
+    agent._initialized = True
 
-    yield orchestrator
+    # Pre-populate agents dict
+    orch.agents = {"conversation": agent}
 
-    await orchestrator.stop()
+    return orch
 
 
 @pytest.fixture
-async def test_agent_db(test_database):
+def test_agent_db(test_database):
     """Alias for test_database for agent tests"""
     return test_database
 

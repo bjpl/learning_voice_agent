@@ -13,19 +13,7 @@ from app.agents.research_agent import ResearchAgent, ToolExecutionError
 from app.agents.base import AgentMessage, MessageType
 
 
-@pytest.fixture
-async def research_agent():
-    """Create a research agent instance"""
-    agent = ResearchAgent(agent_id="research-agent-1")
-    yield agent
-    await agent.cleanup()
-
-
-@pytest.fixture
-async def mock_http_client():
-    """Mock HTTP client for testing"""
-    with patch("httpx.AsyncClient") as mock:
-        yield mock
+# Fixtures are provided by tests/unit/conftest.py
 
 
 @pytest.mark.asyncio

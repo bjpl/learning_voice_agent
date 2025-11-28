@@ -79,11 +79,11 @@ def test_config_with_temp_db():
     """Learning config with temporary database."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = LearningConfig()
-        config.data_dir = tmpdir
+        # Set database paths that exist on LearningConfig
+        config.db_path = os.path.join(tmpdir, "learning.db")
+        config.learning_db_path = os.path.join(tmpdir, "learning_data.db")
+        # Set feedback database path
         config.feedback.database_path = os.path.join(tmpdir, "test_feedback.db")
-        config.preference_learning.preference_file_path = os.path.join(tmpdir, "test_prefs.json")
-        config.analytics.analytics_database_path = os.path.join(tmpdir, "test_analytics.db")
-        config.analytics.report_output_dir = os.path.join(tmpdir, "reports")
         yield config
 
 
@@ -397,21 +397,19 @@ def preference_learner(learning_config, mock_feedback_store):
 def learning_analytics(learning_config, mock_feedback_store):
     """LearningAnalytics with mocked dependencies."""
     from app.learning.analytics import LearningAnalytics
+    # LearningAnalytics.__init__ takes feedback= not feedback_store=
     analytics = LearningAnalytics(
         config=learning_config,
-        feedback_store=mock_feedback_store
+        feedback=mock_feedback_store
     )
     return analytics
 
 
 @pytest.fixture
-def pattern_detector(learning_config, mock_feedback_store):
-    """PatternDetector with mocked dependencies."""
+def pattern_detector(learning_config):
+    """PatternDetector with default config."""
     from app.learning.pattern_detector import PatternDetector
-    detector = PatternDetector(
-        config=learning_config,
-        feedback_store=mock_feedback_store
-    )
+    detector = PatternDetector(config=learning_config)
     return detector
 
 
@@ -423,7 +421,8 @@ def pattern_detector(learning_config, mock_feedback_store):
 async def initialized_feedback_store(test_config_with_temp_db):
     """Real feedback store with temporary database."""
     from app.learning.feedback_store import FeedbackStore
-    store = FeedbackStore(test_config_with_temp_db)
+    # FeedbackStore expects db_path string, not a config object
+    store = FeedbackStore(db_path=test_config_with_temp_db.feedback.database_path)
     await store.initialize()
     yield store
     await store.close()
@@ -455,10 +454,10 @@ async def full_learning_system(test_config_with_temp_db):
 
     adapter = ResponseAdapter(config=config, preference_learner=preference_learner)
 
-    analytics = LearningAnalytics(config=config, feedback_store=feedback_store)
+    analytics = LearningAnalytics(config=config, feedback=feedback_store)
     await analytics.initialize()
 
-    pattern_detector = PatternDetector(config=config, feedback_store=feedback_store)
+    pattern_detector = PatternDetector(config=config)
     await pattern_detector.initialize()
 
     system = {
@@ -527,7 +526,7 @@ def assert_called_once():
 # ============================================================================
 
 @pytest.fixture(autouse=True)
-async def cleanup():
+def cleanup():
     """Cleanup after each test."""
     yield
     # Add any cleanup logic here if needed

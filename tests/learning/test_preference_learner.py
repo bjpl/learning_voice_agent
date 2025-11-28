@@ -47,8 +47,10 @@ def sample_feedback():
         id="feedback-1",
         session_id="session-1",
         exchange_id="exchange-1",
+        query_id="query-1",
         feedback_type=FeedbackType.EXPLICIT_POSITIVE,
         rating=0.8,
+        original_query="What is Python?",
         original_response="This is a medium-length response with some examples.",
         timestamp=datetime.utcnow()
     )
@@ -113,8 +115,10 @@ class TestLearnFromFeedback:
             id="feedback-2",
             session_id="session-1",
             exchange_id="exchange-2",
+            query_id="query-2",
             feedback_type=FeedbackType.EXPLICIT_NEGATIVE,
             rating=0.2,
+            original_query="Explain this concept",
             original_response="Too long and too complex.",
             timestamp=datetime.utcnow()
         )
@@ -133,8 +137,10 @@ class TestLearnFromFeedback:
             id="feedback-3",
             session_id="session-1",
             exchange_id="exchange-3",
+            query_id="query-3",
             feedback_type=FeedbackType.IMPLICIT_ENGAGEMENT,  # Weak signal
             rating=0.5,  # Neutral
+            original_query="Test query",
             original_response="Test",
             timestamp=datetime.utcnow()
         )
@@ -305,8 +311,10 @@ class TestPreferenceUpdate:
             id="feedback-pos",
             session_id="session-1",
             exchange_id="exchange-pos",
+            query_id="query-pos",
             feedback_type=FeedbackType.EXPLICIT_POSITIVE,
             rating=0.9,
+            original_query="Test query",
             original_response="Test",
             timestamp=datetime.utcnow()
         )
@@ -318,8 +326,10 @@ class TestPreferenceUpdate:
                     id=f"feedback-{i}",
                     session_id="session-1",
                     exchange_id=f"exchange-{i}",
+                    query_id=f"query-{i}",
                     feedback_type=FeedbackType.EXPLICIT_POSITIVE,
                     rating=0.9,
+                    original_query="Test query",
                     original_response="Test",
                     timestamp=datetime.utcnow()
                 ),
@@ -348,8 +358,10 @@ class TestSignalStrength:
             id="f1",
             session_id="s1",
             exchange_id="e1",
+            query_id="q1",
             feedback_type=FeedbackType.EXPLICIT_POSITIVE,
             rating=1.0,
+            original_query="Test query",
             original_response="Test",
             timestamp=datetime.utcnow()
         )
@@ -361,8 +373,10 @@ class TestSignalStrength:
             id="f2",
             session_id="s1",
             exchange_id="e2",
+            query_id="q2",
             feedback_type=FeedbackType.EXPLICIT_NEGATIVE,
             rating=0.0,
+            original_query="Test query",
             original_response="Test",
             timestamp=datetime.utcnow()
         )
@@ -375,8 +389,10 @@ class TestSignalStrength:
             id="f1",
             session_id="s1",
             exchange_id="e1",
+            query_id="q1",
             feedback_type=FeedbackType.EXPLICIT_POSITIVE,
             rating=None,
+            original_query="Test query",
             original_response="Test",
             timestamp=datetime.utcnow()
         )
@@ -456,8 +472,10 @@ class TestPreferenceSummary:
                     id=f"feedback-{i}",
                     session_id="session-1",
                     exchange_id=f"exchange-{i}",
+                    query_id=f"query-{i}",
                     feedback_type=FeedbackType.EXPLICIT_POSITIVE,
                     rating=0.9,
+                    original_query="Test query",
                     original_response="Test response",
                     timestamp=datetime.utcnow()
                 ),
@@ -529,8 +547,10 @@ class TestLearningHistory:
                     id=f"feedback-{i}",
                     session_id="session-1",
                     exchange_id=f"exchange-{i}",
+                    query_id=f"query-{i}",
                     feedback_type=FeedbackType.EXPLICIT_POSITIVE,
                     rating=0.8,
+                    original_query="Test query",
                     original_response="Test",
                     timestamp=datetime.utcnow()
                 ),

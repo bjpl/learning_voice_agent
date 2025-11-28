@@ -74,7 +74,7 @@ def sample_message():
     return AgentMessage(
         role=MessageRole.USER,
         content="What is 2 + 2?",
-        message_type=MessageType.TEXT,
+        message_type=MessageType.REQUEST,
         context={
             "session_id": "test_session_123",
             "conversation_history": [
@@ -139,7 +139,7 @@ class TestConversationProcessing:
             response = await conversation_agent.process(sample_message)
 
             assert response.role == MessageRole.ASSISTANT
-            assert response.message_type == MessageType.TEXT
+            assert response.message_type == MessageType.RESPONSE
             assert "4" in response.content
             assert response.metadata is not None
             assert response.metadata.model == "claude-3-5-sonnet-20241022"

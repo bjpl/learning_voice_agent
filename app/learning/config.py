@@ -143,6 +143,14 @@ class PreferenceLearningConfig:
     enable_vocabulary_learning: bool = True
     max_vocabulary_adjustments: int = 50
 
+    # Preference storage
+    preference_file_path: str = "preferences.json"
+
+    # Preference categories
+    preference_categories: List[str] = field(default_factory=lambda: [
+        "response_length", "detail_level", "formality", "example_frequency"
+    ])
+
 
 @dataclass
 class ABTestingConfig:
@@ -291,6 +299,11 @@ class LearningConfig:
     # Data retention
     max_feedback_history: int = 1000
     max_improvement_history: int = 100
+
+    @property
+    def preference_learning(self) -> PreferenceLearningConfig:
+        """Alias for preferences - for backward compatibility"""
+        return self.preferences
 
 
 # Global configuration instance

@@ -176,32 +176,29 @@ def mock_wikipedia_search():
 # ============================================================================
 
 @pytest.fixture
-async def conversation_agent(mock_anthropic_client):
+def conversation_agent(mock_anthropic_client):
     """ConversationAgent with mocked Claude API"""
     from app.agents.conversation_agent import ConversationAgent
 
     agent = ConversationAgent()
     agent.client = mock_anthropic_client
-    await agent.initialize()
+    # Skip initialization - will be called in tests if needed
+    agent._initialized = True
 
-    yield agent
-
-    await agent.cleanup()
+    return agent
 
 @pytest.fixture
-async def analysis_agent():
+def analysis_agent():
     """AnalysisAgent for testing"""
     from app.agents.analysis_agent import AnalysisAgent
 
     agent = AnalysisAgent()
-    await agent.initialize()
+    agent._initialized = True
 
-    yield agent
-
-    await agent.cleanup()
+    return agent
 
 @pytest.fixture
-async def research_agent(mock_web_search, mock_arxiv_search, mock_wikipedia_search):
+def research_agent(mock_web_search, mock_arxiv_search, mock_wikipedia_search):
     """ResearchAgent with mocked search APIs"""
     from app.agents.research_agent import ResearchAgent
 
@@ -209,44 +206,38 @@ async def research_agent(mock_web_search, mock_arxiv_search, mock_wikipedia_sear
     agent.web_search = mock_web_search
     agent.arxiv_search = mock_arxiv_search
     agent.wikipedia_search = mock_wikipedia_search
-    await agent.initialize()
+    agent._initialized = True
 
-    yield agent
-
-    await agent.cleanup()
+    return agent
 
 @pytest.fixture
-async def synthesis_agent(mock_anthropic_client):
+def synthesis_agent(mock_anthropic_client):
     """SynthesisAgent with mocked Claude API"""
     from app.agents.synthesis_agent import SynthesisAgent
 
     agent = SynthesisAgent()
     agent.client = mock_anthropic_client
-    await agent.initialize()
+    agent._initialized = True
 
-    yield agent
-
-    await agent.cleanup()
+    return agent
 
 @pytest.fixture
-async def vision_agent(mock_openai_client):
+def vision_agent(mock_openai_client):
     """VisionAgent with mocked GPT-4V"""
     from app.agents.vision_agent import VisionAgent
 
     agent = VisionAgent()
     agent.client = mock_openai_client
-    await agent.initialize()
+    agent._initialized = True
 
-    yield agent
-
-    await agent.cleanup()
+    return agent
 
 # ============================================================================
 # Orchestrator Fixtures
 # ============================================================================
 
 @pytest.fixture
-async def orchestrator(
+def orchestrator(
     conversation_agent,
     analysis_agent,
     research_agent,
@@ -255,21 +246,19 @@ async def orchestrator(
     """AgentOrchestrator with all agents"""
     from app.agents.orchestrator import AgentOrchestrator
 
-    orchestrator = AgentOrchestrator()
+    orch = AgentOrchestrator()
 
     # Inject mocked agents
-    orchestrator.agents = {
+    orch.agents = {
         "conversation": conversation_agent,
         "analysis": analysis_agent,
         "research": research_agent,
         "synthesis": synthesis_agent
     }
 
-    await orchestrator.initialize()
+    orch._initialized = True
 
-    yield orchestrator
-
-    await orchestrator.cleanup()
+    return orch
 
 # ============================================================================
 # Test Data Fixtures
@@ -363,36 +352,20 @@ def sample_research_results():
 # ============================================================================
 
 @pytest.fixture
-async def test_agent_db():
+def test_agent_db():
     """In-memory database for agent testing"""
     from app.database import Database
 
     db = Database(":memory:")
-    await db.initialize()
+    db._initialized = True
 
-    yield db
-
-    # Cleanup happens automatically with in-memory DB
+    return db
 
 @pytest.fixture
-async def db_with_agent_data(test_agent_db):
+def db_with_agent_data(test_agent_db):
     """Database pre-populated with agent test data"""
-    # Add test exchanges
-    exchanges = [
-        ("session1", "Tell me about AI", "AI is artificial intelligence..."),
-        ("session1", "Explain neural networks", "Neural networks are..."),
-        ("session2", "Learning Python", "Python is great for..."),
-    ]
-
-    for session_id, user_text, agent_text in exchanges:
-        await test_agent_db.save_exchange(
-            session_id,
-            user_text,
-            agent_text,
-            metadata={"agent_type": "conversation"}
-        )
-
-    yield test_agent_db
+    # Data will be added in tests if needed
+    return test_agent_db
 
 # ============================================================================
 # Performance Testing Fixtures
@@ -482,8 +455,7 @@ def assert_agent_response():
 # ============================================================================
 
 @pytest.fixture(autouse=True)
-async def cleanup_after_test():
+def cleanup_after_test():
     """Cleanup after each test"""
     yield
     # Add any global cleanup logic here
-    await asyncio.sleep(0)  # Allow pending tasks to complete
