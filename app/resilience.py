@@ -180,7 +180,11 @@ def get_circuit_breaker(
     return _circuit_breakers[name]
 
 
-def with_circuit_breaker(breaker_name: str):
+def with_circuit_breaker(
+    breaker_name: str = "default",
+    failure_threshold: int = 5,
+    recovery_timeout: int = 30
+):
     """
     Decorator to wrap async function with circuit breaker.
 
@@ -188,14 +192,26 @@ def with_circuit_breaker(breaker_name: str):
         @with_circuit_breaker("claude_api")
         async def call_claude(prompt: str) -> str:
             ...
+
+        # Or with custom thresholds:
+        @with_circuit_breaker(failure_threshold=3, recovery_timeout=60)
+        async def call_api():
+            ...
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        # Use function name as breaker name if default
+        actual_breaker_name = breaker_name if breaker_name != "default" else func.__name__
+
         @wraps(func)
         async def wrapper(*args, **kwargs) -> T:
-            breaker = get_circuit_breaker(breaker_name)
+            breaker = get_circuit_breaker(
+                actual_breaker_name,
+                failure_threshold=failure_threshold,
+                recovery_timeout=recovery_timeout
+            )
 
             if breaker.is_open():
-                raise CircuitBreakerOpen(breaker_name)
+                raise CircuitBreakerOpen(actual_breaker_name)
 
             try:
                 result = await func(*args, **kwargs)
@@ -269,6 +285,40 @@ def with_retry(
 
                 raise last_exception
             return wrapper
+    return decorator
+
+
+def with_timeout(timeout_seconds: float = 30.0):
+    """
+    Decorator for async function timeout.
+
+    PATTERN: Timeout protection
+    WHY: Prevent hanging operations from blocking the system
+
+    Args:
+        timeout_seconds: Maximum time to wait before raising TimeoutError
+
+    Usage:
+        @with_timeout(30)
+        async def long_running_operation():
+            ...
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> T:
+            try:
+                return await asyncio.wait_for(
+                    func(*args, **kwargs),
+                    timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "operation_timeout",
+                    function=func.__name__,
+                    timeout_seconds=timeout_seconds
+                )
+                raise TimeoutError(f"Operation {func.__name__} timed out after {timeout_seconds}s")
+        return wrapper
     return decorator
 
 

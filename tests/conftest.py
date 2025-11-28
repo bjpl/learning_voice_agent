@@ -62,34 +62,15 @@ sys.modules['app.logger'].audio_logger = mock_logger
 sys.modules['app.logger'].api_logger = mock_logger
 sys.modules['app.logger'].conversation_logger = mock_logger
 
-# Also mock resilience module that might not exist
-def mock_circuit_breaker(*args, **kwargs):
-    """Mock circuit breaker decorator that accepts any args/kwargs"""
-    def decorator(func):
-        return func
-    return decorator
-
-def mock_retry(*args, **kwargs):
-    """Mock retry decorator that accepts any args/kwargs"""
-    def decorator(func):
-        return func
-    return decorator
-
-def mock_timeout(*args, **kwargs):
-    """Mock timeout decorator that accepts any args/kwargs"""
-    def decorator(func):
-        return func
-    return decorator
-
-class CircuitBreakerOpen(Exception):
-    """Mock circuit breaker exception"""
-    pass
-
-sys.modules['app.resilience'] = MagicMock()
-sys.modules['app.resilience'].with_circuit_breaker = mock_circuit_breaker
-sys.modules['app.resilience'].with_retry = mock_retry
-sys.modules['app.resilience'].with_timeout = mock_timeout
-sys.modules['app.resilience'].CircuitBreakerOpen = CircuitBreakerOpen
+# Import resilience module - it should always exist
+from app.resilience import (
+    with_circuit_breaker,
+    with_retry,
+    with_timeout,
+    CircuitBreakerOpen,
+    CircuitBreaker,
+    CircuitBreakerState,
+)
 
 # Mock advanced_prompts module
 mock_prompt_engine = MagicMock()
@@ -137,7 +118,61 @@ def mock_redis_client():
     mock_client.delete = AsyncMock(return_value=1)
     mock_client.scan_iter = AsyncMock(return_value=iter([]))
     mock_client.close = AsyncMock()
+    mock_client.ping = AsyncMock(return_value=True)
+    mock_client.keys = AsyncMock(return_value=[])
     return mock_client
+
+
+@pytest.fixture
+def mock_redis(mock_redis_client):
+    """Alias for mock_redis_client - used by unit tests"""
+    return mock_redis_client
+
+
+@pytest.fixture
+def test_state_manager(mock_redis_client):
+    """StateManager instance with mocked Redis for testing"""
+    from app.state_manager import StateManager
+
+    # Create instance
+    manager = StateManager()
+    manager.redis_client = mock_redis_client
+
+    # Set up mock behavior for get to return stored data
+    _storage = {}
+
+    async def mock_get(key):
+        return _storage.get(key)
+
+    async def mock_setex(key, ttl, value):
+        _storage[key] = value
+        return True
+
+    async def mock_delete(key):
+        if key in _storage:
+            del _storage[key]
+            return 1
+        return 0
+
+    async def mock_keys(pattern):
+        import fnmatch
+        return [k for k in _storage.keys() if fnmatch.fnmatch(k, pattern.replace('*', '*'))]
+
+    async def mock_scan_iter(match=None):
+        """Async generator for scan_iter"""
+        import fnmatch
+        pattern = match.replace('*', '*') if match else '*'
+        for key in list(_storage.keys()):
+            if fnmatch.fnmatch(key, pattern):
+                yield key
+
+    mock_redis_client.get = AsyncMock(side_effect=mock_get)
+    mock_redis_client.setex = AsyncMock(side_effect=mock_setex)
+    mock_redis_client.delete = AsyncMock(side_effect=mock_delete)
+    mock_redis_client.keys = AsyncMock(side_effect=mock_keys)
+    mock_redis_client.scan_iter = mock_scan_iter  # Direct async generator
+
+    return manager
 
 
 @pytest.fixture
