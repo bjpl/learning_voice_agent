@@ -81,9 +81,13 @@ class TestSettings:
         """Test that Twilio settings are optional"""
         from app.config import Settings
 
-        with patch.dict(os.environ, {
-            "ANTHROPIC_API_KEY": "test-key"
-        }, clear=False):
+        # Explicitly clear Twilio env vars to test optional behavior
+        env_override = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "TWILIO_ACCOUNT_SID": "",
+            "TWILIO_AUTH_TOKEN": "",
+        }
+        with patch.dict(os.environ, env_override, clear=False):
             settings = Settings()
             # Should not raise even without Twilio credentials
             assert settings.twilio_account_sid is None or settings.twilio_account_sid == ""
