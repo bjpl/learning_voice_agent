@@ -90,7 +90,7 @@ class KnowledgeGraphStore:
         self._initialized = False
         self.logger = logger
 
-    @with_retry(max_attempts=3, initial_wait=1.0)
+    @with_retry(max_attempts=3, min_wait=1.0)
     async def initialize(self):
         """
         Initialize Neo4j connection and schema
@@ -191,7 +191,7 @@ class KnowledgeGraphStore:
 
         self.logger.info("knowledge_graph_schema_created")
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def add_concept(
         self,
         name: str,
@@ -275,7 +275,7 @@ class KnowledgeGraphStore:
             topic_name=topic_name
         )
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def add_entity(
         self,
         text: str,
@@ -348,7 +348,7 @@ class KnowledgeGraphStore:
             )
             raise
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def add_relationship(
         self,
         from_concept: str,

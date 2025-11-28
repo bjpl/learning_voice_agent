@@ -127,7 +127,7 @@ class MultiModalIndexer:
             )
             raise
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def index_image(
         self,
         file_id: str,
@@ -207,7 +207,7 @@ class MultiModalIndexer:
             )
             raise
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def index_document(
         self,
         file_id: str,
@@ -289,7 +289,7 @@ class MultiModalIndexer:
             )
             raise
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def index_audio(
         self,
         file_id: str,

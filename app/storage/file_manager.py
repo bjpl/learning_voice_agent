@@ -105,7 +105,7 @@ class FileManager:
             )
             raise
 
-    @with_retry(max_attempts=3, initial_wait=0.5)
+    @with_retry(max_attempts=3, min_wait=0.5)
     async def save_file(
         self,
         file_data: bytes,

@@ -23,24 +23,38 @@ CODE:
 """
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from fastapi.responses import Response
-from twilio.twiml.voice_response import VoiceResponse, Gather, Say
-from twilio.request_validator import RequestValidator
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from datetime import datetime
 import hashlib
 import hmac
+
+# Conditional imports for twilio
+try:
+    from twilio.twiml.voice_response import VoiceResponse, Gather, Say
+    from twilio.request_validator import RequestValidator
+    TWILIO_AVAILABLE = True
+except ImportError:
+    TWILIO_AVAILABLE = False
+    VoiceResponse = None
+    Gather = None
+    Say = None
+    RequestValidator = None
 
 from app.config import settings
 from app.conversation_handler import conversation_handler
 from app.state_manager import state_manager
 from app.database import db
 from app.audio_pipeline import audio_pipeline
+from app.logger import logger
 
 router = APIRouter(prefix="/twilio", tags=["twilio"])
 
 class TwilioHandler:
     def __init__(self):
-        self.validator = RequestValidator(settings.twilio_auth_token) if settings.twilio_auth_token else None
+        if TWILIO_AVAILABLE and RequestValidator and settings.twilio_auth_token:
+            self.validator = RequestValidator(settings.twilio_auth_token)
+        else:
+            self.validator = None
         
     def validate_request(self, request: Request, body: str) -> bool:
         """
@@ -348,4 +362,7 @@ async def process_recording(recording_url: str, session_id: str):
 # Add router to main app
 def setup_twilio_routes(app):
     """Setup Twilio routes on main app"""
+    if not TWILIO_AVAILABLE:
+        logger.warning("Twilio routes not available - twilio package not installed")
+        return
     app.include_router(router)

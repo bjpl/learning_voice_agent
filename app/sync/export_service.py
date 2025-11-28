@@ -625,27 +625,29 @@ class DataExportService:
     # CHECKSUM AND VALIDATION
     # ========================================================================
 
-    def calculate_checksum(self, data: Union[str, bytes]) -> str:
+    def calculate_checksum(self, data: Union[str, bytes, dict]) -> str:
         """
         Calculate SHA-256 checksum of data.
 
         Args:
-            data: Data to checksum (string or bytes)
+            data: Data to checksum (string, bytes, or dict)
 
         Returns:
             Hex-encoded SHA-256 hash
         """
-        if isinstance(data, str):
+        if isinstance(data, dict):
+            data = json.dumps(data, sort_keys=True).encode('utf-8')
+        elif isinstance(data, str):
             data = data.encode('utf-8')
 
         return hashlib.sha256(data).hexdigest()
 
-    def verify_checksum(self, data: Union[str, bytes], expected_checksum: str) -> bool:
+    def verify_checksum(self, data: Union[str, bytes, dict], expected_checksum: str) -> bool:
         """
         Verify data integrity using checksum.
 
         Args:
-            data: Data to verify
+            data: Data to verify (string, bytes, or dict)
             expected_checksum: Expected SHA-256 hash
 
         Returns:

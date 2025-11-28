@@ -92,8 +92,7 @@ class WhisperStrategy(TranscriptionStrategy):
         else:
             self.client = None
             logger.warning(
-                "whisper_strategy_unavailable",
-                reason="openai package not installed"
+                "whisper_strategy_unavailable: openai package not installed"
             )
 
     @with_circuit_breaker("whisper_api")
@@ -159,9 +158,7 @@ class AudioPipeline:
         self.transcription_strategy = WhisperStrategy()
         self.max_duration = settings.max_audio_duration
         logger.info(
-            "audio_pipeline_initialized",
-            max_duration=self.max_duration,
-            openai_available=OPENAI_AVAILABLE
+            f"audio_pipeline_initialized with max_duration={self.max_duration}, openai_available={OPENAI_AVAILABLE}"
         )
 
     def _detect_format(self, audio_bytes: bytes) -> AudioFormat:

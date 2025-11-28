@@ -65,7 +65,7 @@ Be specific and thorough in your analysis."""
         )
 
     @with_timeout(30)
-    @with_retry(max_attempts=3, initial_wait=1.0)
+    @with_retry(max_attempts=3, min_wait=1.0)
     async def analyze_image(
         self,
         image_path: str,

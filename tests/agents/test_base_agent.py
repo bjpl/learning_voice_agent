@@ -12,12 +12,19 @@ import uuid
 class ConcreteAgent(BaseAgent):
     """Concrete implementation of BaseAgent for testing"""
 
+    def __init__(self, agent_id: str = None, config: dict = None):
+        """Initialize with config support for backward compat"""
+        super().__init__(agent_id=agent_id, agent_type="ConcreteAgent")
+        self.config = config or {}
+
     async def process(self, message: AgentMessage) -> AgentMessage:
         """Simple echo implementation"""
-        return self._create_response(
+        return AgentMessage(
+            sender=self.agent_id,
+            recipient=message.sender,
+            message_type=MessageType.RESPONSE,
             content={"echo": message.content},
-            message_type=MessageType.CONVERSATION_RESPONSE,
-            original_message=message
+            correlation_id=message.message_id
         )
 
 

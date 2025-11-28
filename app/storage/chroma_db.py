@@ -17,16 +17,36 @@ ARCHITECTURE:
 
 CODE:
 """
-from typing import List, Dict, Any, Optional, Tuple
-import chromadb
-from chromadb.config import Settings
-from chromadb.utils import embedding_functions
-import openai
+from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 from datetime import datetime, timedelta
 import hashlib
 import json
 import os
 from pathlib import Path
+
+# Conditional imports for optional dependencies
+try:
+    import chromadb
+    from chromadb.config import Settings
+    from chromadb.utils import embedding_functions
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    chromadb = None
+    Settings = None
+    embedding_functions = None
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    openai = None
+
+# Type checking imports
+if TYPE_CHECKING:
+    import chromadb
+    import openai
 
 from app.config import settings
 from app.rag.config import rag_config
@@ -64,6 +84,18 @@ class ChromaDBStorage:
             collection_name: Name of the collection
             embedding_model: OpenAI embedding model name
         """
+        if not CHROMADB_AVAILABLE:
+            raise ImportError(
+                "chromadb package is not installed. "
+                "Install it with: pip install chromadb"
+            )
+
+        if not OPENAI_AVAILABLE:
+            raise ImportError(
+                "openai package is not installed. "
+                "Install it with: pip install openai"
+            )
+
         self.persist_directory = persist_directory or rag_config.chroma_persist_directory
         self.collection_name = collection_name or rag_config.chroma_collection_name
         self.embedding_model = embedding_model or rag_config.embedding_model
@@ -492,5 +524,13 @@ class ChromaDBStorage:
             raise
 
 
-# Create default instance
-chroma_storage = ChromaDBStorage()
+# Create default instance (only if dependencies are available)
+if CHROMADB_AVAILABLE and OPENAI_AVAILABLE:
+    try:
+        chroma_storage = ChromaDBStorage()
+    except Exception as e:
+        logger.warning(f"Failed to initialize default ChromaDB storage: {e}")
+        chroma_storage = None
+else:
+    logger.warning("ChromaDB or OpenAI not available. Default instance not created.")
+    chroma_storage = None

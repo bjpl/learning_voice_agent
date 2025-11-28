@@ -14,6 +14,31 @@ from datetime import datetime
 # Add app to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Try to import external libraries, fall back to mocks if not available
+try:
+    import neo4j
+except ImportError:
+    from tests.mocks import neo4j
+    sys.modules['neo4j'] = neo4j
+    sys.modules['neo4j.exceptions'] = neo4j.exceptions
+
+try:
+    import chromadb
+except ImportError:
+    from tests.mocks import chromadb
+    sys.modules['chromadb'] = chromadb
+    sys.modules['chromadb.config'] = chromadb.config
+
+try:
+    from twilio.rest import Client as TwilioClient
+except ImportError:
+    from tests.mocks import twilio
+    sys.modules['twilio'] = twilio
+    sys.modules['twilio.rest'] = twilio.rest
+    sys.modules['twilio.twiml'] = twilio.twiml
+    sys.modules['twilio.twiml.voice_response'] = twilio.twiml.voice_response
+    sys.modules['twilio.request_validator'] = twilio.request_validator
+
 # Set test environment variables before importing app modules
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
@@ -38,10 +63,33 @@ sys.modules['app.logger'].api_logger = mock_logger
 sys.modules['app.logger'].conversation_logger = mock_logger
 
 # Also mock resilience module that might not exist
+def mock_circuit_breaker(*args, **kwargs):
+    """Mock circuit breaker decorator that accepts any args/kwargs"""
+    def decorator(func):
+        return func
+    return decorator
+
+def mock_retry(*args, **kwargs):
+    """Mock retry decorator that accepts any args/kwargs"""
+    def decorator(func):
+        return func
+    return decorator
+
+def mock_timeout(*args, **kwargs):
+    """Mock timeout decorator that accepts any args/kwargs"""
+    def decorator(func):
+        return func
+    return decorator
+
+class CircuitBreakerOpen(Exception):
+    """Mock circuit breaker exception"""
+    pass
+
 sys.modules['app.resilience'] = MagicMock()
-sys.modules['app.resilience'].with_circuit_breaker = lambda name: lambda f: f
-sys.modules['app.resilience'].with_retry = lambda **kwargs: lambda f: f
-sys.modules['app.resilience'].CircuitBreakerOpen = Exception
+sys.modules['app.resilience'].with_circuit_breaker = mock_circuit_breaker
+sys.modules['app.resilience'].with_retry = mock_retry
+sys.modules['app.resilience'].with_timeout = mock_timeout
+sys.modules['app.resilience'].CircuitBreakerOpen = CircuitBreakerOpen
 
 # Mock advanced_prompts module
 mock_prompt_engine = MagicMock()
@@ -365,3 +413,289 @@ def timing():
 async def test_db(test_database):
     """Alias for test_database fixture."""
     return test_database
+
+
+# ============================================================================
+# Neo4j Fixtures for Knowledge Graph Tests
+# ============================================================================
+
+@pytest.fixture
+def mock_neo4j_driver():
+    """Mock Neo4j driver with sessions"""
+    driver = AsyncMock()
+    driver.verify_connectivity = AsyncMock()
+    driver.close = AsyncMock()
+
+    # Mock session
+    session = AsyncMock()
+
+    # Mock concept result
+    concept_result = AsyncMock()
+    concept_result.single = AsyncMock(return_value={
+        'name': 'test_concept',
+        'description': 'Test description',
+        'frequency': 1
+    })
+
+    # Mock related concepts result
+    related_result = AsyncMock()
+    related_result.values = AsyncMock(return_value=[
+        ['concept1', 'desc1', 5, ['RELATES_TO'], [0.8], 1],
+        ['concept2', 'desc2', 3, ['BUILDS_ON'], [0.7], 2]
+    ])
+
+    # Mock stats result
+    stats_result = AsyncMock()
+    stats_result.single = AsyncMock(return_value={
+        'concept_count': 10,
+        'relationship_count': 15,
+        'entity_count': 5,
+        'session_count': 3,
+        'topic_count': 2
+    })
+
+    session.run = AsyncMock(return_value=concept_result)
+
+    # Mock session context manager
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock()
+
+    driver.session = MagicMock(return_value=session)
+
+    return driver, session, concept_result, related_result, stats_result
+
+
+@pytest.fixture
+async def mock_knowledge_graph_store(mock_neo4j_driver):
+    """Mock KnowledgeGraphStore instance"""
+    from app.knowledge_graph.graph_store import KnowledgeGraphStore
+    from app.knowledge_graph.config import KnowledgeGraphConfig
+
+    driver, session, _, _, _ = mock_neo4j_driver
+
+    config = KnowledgeGraphConfig()
+    store = KnowledgeGraphStore(config)
+
+    # Set up mocks
+    store.driver = driver
+    store._initialized = True
+
+    # Mock session context manager
+    store.session = lambda: session
+
+    return store
+
+
+@pytest.fixture
+def sample_concept_data():
+    """Sample concept data for testing"""
+    return {
+        'name': 'machine learning',
+        'description': 'A field of AI',
+        'metadata': {'category': 'AI'},
+        'topic': 'artificial intelligence'
+    }
+
+
+@pytest.fixture
+def sample_relationship_data():
+    """Sample relationship data for testing"""
+    return {
+        'from_concept': 'neural networks',
+        'to_concept': 'deep learning',
+        'relationship_type': 'RELATES_TO',
+        'strength': 0.9
+    }
+
+
+@pytest.fixture
+def sample_session_data():
+    """Sample session data for testing"""
+    return {
+        'session_id': 'test_session_123',
+        'concepts': ['machine learning', 'neural networks'],
+        'entities': [('TensorFlow', 'PRODUCT'), ('Python', 'LANGUAGE')],
+        'metadata': {'user_id': 'test_user'}
+    }
+
+
+# ============================================================================
+# ChromaDB Fixtures for Vector Store Tests
+# ============================================================================
+
+@pytest.fixture
+def mock_chroma_client():
+    """Mock ChromaDB client"""
+    try:
+        from tests.mocks.chromadb import PersistentClient, Collection
+    except:
+        import chromadb
+        PersistentClient = chromadb.PersistentClient
+        Collection = chromadb.Collection
+
+    client = MagicMock(spec=PersistentClient)
+
+    # Mock collection
+    collection = MagicMock(spec=Collection)
+    collection.name = "conversations"
+    collection.count = MagicMock(return_value=100)
+    collection.add = MagicMock()
+    collection.query = MagicMock(return_value={
+        'ids': [['id1', 'id2', 'id3']],
+        'distances': [[0.1, 0.2, 0.3]],
+        'documents': [['doc1', 'doc2', 'doc3']],
+        'metadatas': [[{'session_id': 'test'}, {}, {}]]
+    })
+    collection.delete = MagicMock()
+
+    client.get_or_create_collection = MagicMock(return_value=collection)
+    client.list_collections = MagicMock(return_value=[{'name': 'conversations'}])
+    client.delete_collection = MagicMock()
+
+    return client
+
+
+@pytest.fixture
+async def mock_vector_store(mock_chroma_client):
+    """Mock VectorStore instance"""
+    from app.vector.vector_store import VectorStore
+
+    store = VectorStore()
+    store.client = mock_chroma_client
+    store._initialized = True
+
+    # Mock collections
+    collection = mock_chroma_client.get_or_create_collection("conversations")
+    store.collections = {'conversations': collection}
+
+    return store
+
+
+@pytest.fixture
+def mock_embedding_generator():
+    """Mock EmbeddingGenerator"""
+    import numpy as np
+
+    generator = AsyncMock()
+    generator.initialize = AsyncMock()
+    generator.generate_embedding = AsyncMock(
+        return_value=np.random.rand(384).astype('float32')
+    )
+    generator.generate_batch = AsyncMock(
+        return_value=[np.random.rand(384).astype('float32') for _ in range(3)]
+    )
+    generator.close = AsyncMock()
+
+    return generator
+
+
+@pytest.fixture
+def mock_analysis_agent():
+    """Mock AnalysisAgent for concept extraction"""
+    agent = AsyncMock()
+
+    async def mock_process(message):
+        return MagicMock(
+            content={
+                "concepts": ["machine learning", "neural networks"],
+                "entities": [
+                    {"text": "Python", "label": "PRODUCT"},
+                    {"text": "TensorFlow", "label": "PRODUCT"}
+                ],
+                "keywords": [
+                    {"keyword": "algorithm", "frequency": 3}
+                ],
+                "topics": [
+                    {"topic": "technology", "confidence": 0.9}
+                ]
+            }
+        )
+
+    agent.process = mock_process
+    return agent
+
+
+# ============================================================================
+# Agent Fixtures for tests/agents/
+# ============================================================================
+
+@pytest.fixture
+def sample_agent_message():
+    """Sample AgentMessage for testing"""
+    from app.agents.base import AgentMessage, MessageType
+    return AgentMessage(
+        sender="user",
+        recipient="test_agent",
+        message_type=MessageType.REQUEST,
+        content={"text": "Hello, test agent"}
+    )
+
+
+@pytest.fixture
+def sample_conversation_context():
+    """Sample conversation context for testing"""
+    return [
+        {"user": "What is machine learning?", "agent": "Machine learning is..."},
+        {"user": "Can you explain more?", "agent": "Sure, let me elaborate..."}
+    ]
+
+
+@pytest.fixture
+async def conversation_agent():
+    """ConversationAgent instance for testing"""
+    from app.agents.conversation_agent import ConversationAgent
+    agent = ConversationAgent()
+    # Mock the client to avoid actual API calls
+    agent.client = AsyncMock()
+    mock_message = MagicMock()
+    mock_message.content = [MagicMock(text="Test response from agent")]
+    agent.client.messages.create = AsyncMock(return_value=mock_message)
+    yield agent
+    await agent.cleanup()
+
+
+@pytest.fixture
+async def orchestrator(mock_anthropic_client):
+    """AgentOrchestrator instance for testing"""
+    from app.agents.orchestrator import AgentOrchestrator
+    from app.agents.conversation_agent import ConversationAgent
+
+    orchestrator = AgentOrchestrator()
+    await orchestrator.start()
+
+    # Register conversation agent with mocked client
+    agent = ConversationAgent()
+    agent.client = mock_anthropic_client
+    await orchestrator.register_agent(agent, capabilities=["conversation"])
+
+    yield orchestrator
+
+    await orchestrator.stop()
+
+
+@pytest.fixture
+async def test_agent_db(test_database):
+    """Alias for test_database for agent tests"""
+    return test_database
+
+
+@pytest.fixture
+def timing():
+    """Timing context manager for performance tests"""
+    class TimingContext:
+        def __init__(self):
+            self.start_time = None
+            self.end_time = None
+            self.elapsed_ms = 0
+
+        def __enter__(self):
+            import time
+            self.start_time = time.perf_counter()
+            return self
+
+        def __exit__(self, *args):
+            import time
+            self.end_time = time.perf_counter()
+            self.elapsed_ms = (self.end_time - self.start_time) * 1000
+
+    return TimingContext()

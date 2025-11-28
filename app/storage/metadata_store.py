@@ -68,7 +68,7 @@ class MetadataStore:
         # Ensure directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    @with_retry(max_attempts=3, initial_wait=0.5)
+    @with_retry(max_attempts=3, min_wait=0.5)
     async def initialize(self):
         """
         Initialize database schema with tables and indexes
@@ -211,7 +211,7 @@ class MetadataStore:
             db.row_factory = aiosqlite.Row
             yield db
 
-    @with_retry(max_attempts=3, initial_wait=0.5)
+    @with_retry(max_attempts=3, min_wait=0.5)
     async def save_file_metadata(
         self,
         file_id: str,
@@ -272,7 +272,7 @@ class MetadataStore:
             )
             raise
 
-    @with_retry(max_attempts=2, initial_wait=0.5)
+    @with_retry(max_attempts=2, min_wait=0.5)
     async def save_analysis(
         self,
         file_id: str,

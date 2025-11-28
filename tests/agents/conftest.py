@@ -10,9 +10,6 @@ from typing import Dict, List, Any
 from datetime import datetime
 import uuid
 
-# Test Configuration
-pytest_plugins = ('pytest_asyncio',)
-
 # ============================================================================
 # Mock Environment
 # ============================================================================

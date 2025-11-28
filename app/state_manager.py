@@ -16,9 +16,7 @@ class StateManager:
         self.redis_client = None
         self.ttl = settings.redis_ttl
         logger.info(
-            "state_manager_created",
-            redis_url=settings.redis_url,
-            ttl=self.ttl
+            f"state_manager_created with redis_url={settings.redis_url}, ttl={self.ttl}"
         )
 
     async def initialize(self):

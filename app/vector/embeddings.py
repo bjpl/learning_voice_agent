@@ -4,12 +4,31 @@ PATTERN: Singleton with caching for efficiency
 WHY: Model loading is expensive, reuse instances
 RESILIENCE: Automatic model download with retry
 """
-import torch
 import numpy as np
-from typing import List, Union, Optional, Dict, Any
+from typing import List, Union, Optional, Dict, Any, TYPE_CHECKING
 from functools import lru_cache
 from datetime import datetime, timedelta
-from sentence_transformers import SentenceTransformer
+
+# Conditional imports for optional dependencies
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None
+
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
+
+# Type checking imports
+if TYPE_CHECKING:
+    import torch
+    from sentence_transformers import SentenceTransformer
+
 from app.vector.config import VectorConfig, EmbeddingModelConfig
 from app.logger import db_logger
 
@@ -91,11 +110,15 @@ class EmbeddingGenerator:
         if self._initialized:
             return
 
+        # Note: Only warn if logger is available, don't fail during import
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            pass  # Will raise ImportError on initialize() if needed
+
         from app.vector.config import vector_config as default_config
         self.config = config or default_config
         self.model_config = self.config.embedding_model
 
-        self.model: Optional[SentenceTransformer] = None
+        self.model: Optional[Any] = None  # SentenceTransformer when available
         self.cache: Optional[EmbeddingCache] = None
         self._initialized = False
 
@@ -107,6 +130,12 @@ class EmbeddingGenerator:
         """
         if self._initialized:
             return
+
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            raise ImportError(
+                "sentence-transformers package is not installed. "
+                "Install it with: pip install sentence-transformers torch"
+            )
 
         try:
             db_logger.info(

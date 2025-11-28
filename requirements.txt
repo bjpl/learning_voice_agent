@@ -25,9 +25,10 @@ aiosqlite==0.19.0
 # Week 1: Infrastructure & Resilience
 structlog==24.1.0
 tenacity==8.2.3
+circuitbreaker==1.4.0
 
 # Week 1: Testing
-pytest==8.0.0
+pytest==7.4.4
 pytest-asyncio==0.23.4
 pytest-cov==4.1.0
 fakeredis==2.21.0
@@ -48,9 +49,10 @@ cryptography>=42.0.0
 chromadb==0.4.22
 sentence-transformers==2.3.1
 numpy>=1.24.0
+neo4j==5.16.0
 
 # Week 3: WebRTC Support
-aiortc==1.6.0
+# aiortc==1.6.0 # Skipped - requires FFmpeg libs
 
 # Week 4: Scale Testing and Production
 locust==2.24.0

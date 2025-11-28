@@ -32,11 +32,13 @@ from app.sync.models import (
     DeviceInfo,
     DeviceListResponse,
     ValidationResponse,
-    ConflictInfo,
     ConflictListResponse,
+    ConflictResolutionResponse,
+)
+from app.sync.conflict_resolver import (
+    SyncConflict as ConflictInfo,  # Aliased for compatibility
     ConflictType,
     ResolutionStrategy,
-    ConflictResolutionResponse,
 )
 
 
@@ -71,7 +73,7 @@ class SyncService:
         self._conflicts: Dict[str, ConflictInfo] = {}
         self._current_device_id: Optional[str] = None
         self._last_sync: Optional[datetime] = None
-        self._status: SyncStatus = SyncStatus.IDLE
+        self._status: SyncStatus = SyncStatus.PENDING
 
     async def initialize(self) -> None:
         """Initialize sync service and create necessary tables"""
@@ -625,7 +627,7 @@ class SyncService:
             self._last_sync = datetime.utcnow()
             await self._save_state('last_sync', self._last_sync.isoformat())
 
-            self._status = SyncStatus.IDLE
+            self._status = SyncStatus.COMPLETED
 
             logger.info(
                 "data_export_completed",
@@ -752,7 +754,7 @@ class SyncService:
     async def import_data(
         self,
         backup_data: bytes,
-        merge_strategy: ResolutionStrategy = ResolutionStrategy.KEEP_REMOTE,
+        merge_strategy: ResolutionStrategy = ResolutionStrategy.KEEP_IMPORTED,
         dry_run: bool = False,
         skip_conflicts: bool = False
     ) -> ImportResponse:
@@ -827,7 +829,7 @@ class SyncService:
                             existing = await cursor.fetchone()
 
                             if existing:
-                                if merge_strategy == ResolutionStrategy.KEEP_REMOTE:
+                                if merge_strategy == ResolutionStrategy.KEEP_IMPORTED:
                                     # Update existing
                                     await db.execute("""
                                         UPDATE captures SET user_text = ?, agent_text = ?, metadata = ?
@@ -873,7 +875,7 @@ class SyncService:
             self._last_sync = datetime.utcnow()
             await self._save_state('last_sync', self._last_sync.isoformat())
 
-            self._status = SyncStatus.IDLE
+            self._status = SyncStatus.COMPLETED
 
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
 
@@ -1030,7 +1032,7 @@ class SyncService:
         self,
         conflict_id: Optional[str] = None,
         conflict_ids: Optional[List[str]] = None,
-        strategy: ResolutionStrategy = ResolutionStrategy.KEEP_REMOTE,
+        strategy: ResolutionStrategy = ResolutionStrategy.KEEP_IMPORTED,
         custom_value: Optional[Dict[str, Any]] = None
     ) -> ConflictResolutionResponse:
         """

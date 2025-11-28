@@ -43,8 +43,8 @@ from app.resilience import (
     with_circuit_breaker,
     with_timeout,
     with_retry,
+    CircuitBreakerOpen,  # Import from app.resilience instead of circuitbreaker
 )
-from circuitbreaker import CircuitBreakerError
 
 
 class ConversationAgent(BaseAgent):
@@ -209,7 +209,7 @@ End conversation gracefully:
 
     @with_circuit_breaker(failure_threshold=3, recovery_timeout=60)
     @with_timeout(30)  # Longer timeout for Sonnet with tools
-    @with_retry(max_attempts=3, initial_wait=1.0)
+    @with_retry(max_attempts=3, min_wait=1.0)
     async def _call_claude_api(
         self,
         messages: List[Dict[str, Any]],
@@ -444,7 +444,7 @@ End conversation gracefully:
 
             return response_message
 
-        except CircuitBreakerError as e:
+        except CircuitBreakerOpen as e:
             metadata.error = "circuit_breaker_open"
             self.logger.warning("circuit_breaker_open", error=str(e))
 

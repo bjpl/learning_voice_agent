@@ -5,15 +5,27 @@ WHY: Semantic similarity search for conversation context
 RESILIENCE: Persistent storage with automatic recovery
 """
 import uuid
-import chromadb
-from chromadb.config import Settings
-from typing import List, Dict, Optional, Any, Union
+from typing import List, Dict, Optional, Any, Union, TYPE_CHECKING
 from datetime import datetime
 import numpy as np
 from app.vector.config import VectorConfig, CollectionConfig
 from app.vector.embeddings import EmbeddingGenerator, embedding_generator
 from app.logger import db_logger
 from app.resilience import with_retry
+
+# Conditional import for chromadb - allows tests to run without the package
+try:
+    import chromadb
+    from chromadb.config import Settings
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    chromadb = None
+    Settings = None
+
+# Type checking imports
+if TYPE_CHECKING:
+    import chromadb
 
 
 class VectorStore:
@@ -47,24 +59,39 @@ class VectorStore:
 
         Args:
             config: Vector configuration (uses default if None)
+
+        Raises:
+            ImportError: If chromadb package is not installed
         """
         from app.vector.config import vector_config as default_config
         self.config = config or default_config
 
-        self.client: Optional[chromadb.PersistentClient] = None
-        self.collections: Dict[str, chromadb.Collection] = {}
+        self.client: Optional[Any] = None  # chromadb.PersistentClient when available
+        self.collections: Dict[str, Any] = {}  # chromadb.Collection when available
         self.embedding_generator: Optional[EmbeddingGenerator] = None
         self._initialized = False
 
-    @with_retry(max_attempts=3, initial_wait=0.5)
+        # Check availability but don't fail until initialize()
+        # Note: Warning will be logged on initialize() if chromadb not available
+
+    @with_retry(max_attempts=3, min_wait=0.5)
     async def initialize(self) -> None:
         """
         CONCEPT: Lazy initialization with persistent client
         WHY: Defer expensive operations until needed
         RESILIENCE: Retry on initialization failures
+
+        Raises:
+            ImportError: If chromadb package is not installed
         """
         if self._initialized:
             return
+
+        if not CHROMADB_AVAILABLE:
+            raise ImportError(
+                "chromadb package is not installed. "
+                "Install it with: pip install chromadb"
+            )
 
         try:
             db_logger.info(
@@ -109,7 +136,7 @@ class VectorStore:
     async def _get_or_create_collection(
         self,
         config: CollectionConfig
-    ) -> chromadb.Collection:
+    ) -> Any:  # chromadb.Collection when available
         """
         Get existing collection or create new one
 
@@ -153,7 +180,7 @@ class VectorStore:
             )
             raise
 
-    @with_retry(max_attempts=3, initial_wait=0.5)
+    @with_retry(max_attempts=3, min_wait=0.5)
     async def add_embedding(
         self,
         collection_name: str,
@@ -228,7 +255,7 @@ class VectorStore:
             )
             raise
 
-    @with_retry(max_attempts=3, initial_wait=0.5)
+    @with_retry(max_attempts=3, min_wait=0.5)
     async def add_batch(
         self,
         collection_name: str,
@@ -593,5 +620,16 @@ class VectorStore:
         db_logger.info("vector_store_closed")
 
 
-# Global vector store instance
-vector_store = VectorStore()
+# Global vector store instance (only create if chromadb available)
+if CHROMADB_AVAILABLE:
+    try:
+        vector_store = VectorStore()
+    except Exception as e:
+        db_logger.error(
+            "vector_store_initialization_failed",
+            error=str(e),
+            error_type=type(e).__name__
+        )
+        vector_store = None
+else:
+    vector_store = None

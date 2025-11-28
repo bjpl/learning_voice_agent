@@ -250,7 +250,7 @@ class ResearchAgent(BaseAgent):
 
     # ==================== Tool Implementations ====================
 
-    @with_retry(max_attempts=2, initial_wait=1.0)
+    @with_retry(max_attempts=2, min_wait=1.0)
     async def _web_search(self, query: str, max_results: int = 5) -> Dict[str, Any]:
         """
         Web search using Tavily API or DuckDuckGo fallback
@@ -347,7 +347,7 @@ class ResearchAgent(BaseAgent):
             "results": results[:max_results],
         }
 
-    @with_retry(max_attempts=2, initial_wait=1.0)
+    @with_retry(max_attempts=2, min_wait=1.0)
     async def _wikipedia_search(self, query: str, max_results: int = 5) -> Dict[str, Any]:
         """
         Search Wikipedia using the MediaWiki API
@@ -403,7 +403,7 @@ class ResearchAgent(BaseAgent):
             "results": results,
         }
 
-    @with_retry(max_attempts=2, initial_wait=1.0)
+    @with_retry(max_attempts=2, min_wait=1.0)
     async def _arxiv_search(self, query: str, max_results: int = 5) -> Dict[str, Any]:
         """
         Search arXiv for academic papers
