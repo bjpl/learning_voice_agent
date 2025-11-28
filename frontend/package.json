@@ -32,7 +32,7 @@
     "@playwright/test": "^1.40.1",
     "@types/node": "^20.11.5",
     "@types/uuid": "^9.0.7",
-    "@vitejs/plugin-vue": "^5.0.3",
+    "@vitejs/plugin-vue": "^6.0.2",
     "@vue/tsconfig": "^0.5.1",
     "autoprefixer": "^10.4.17",
     "postcss": "^8.4.33",
