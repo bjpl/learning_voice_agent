@@ -35,6 +35,44 @@ def mock_database():
 
     db.get_all_captures = AsyncMock(return_value=[])
 
+    # Mock get_connection as async context manager
+    class MockConnection:
+        async def execute(self, query, params=None):
+            class MockCursor:
+                async def fetchall(self):
+                    return [
+                        {
+                            'id': 1,
+                            'session_id': 'sess_1',
+                            'timestamp': '2025-01-21T10:00:00Z',
+                            'user_text': 'What is machine learning?',
+                            'agent_text': 'Machine learning is a subset of AI...'
+                        },
+                        {
+                            'id': 2,
+                            'session_id': 'sess_1',
+                            'timestamp': '2025-01-21T10:05:00Z',
+                            'user_text': 'How does neural network work?',
+                            'agent_text': 'Neural networks consist of layers...'
+                        },
+                        {
+                            'id': 3,
+                            'session_id': 'sess_2',
+                            'timestamp': '2025-01-21T10:10:00Z',
+                            'user_text': 'Deep learning basics',
+                            'agent_text': 'Deep learning uses multiple layers...'
+                        }
+                    ]
+            return MockCursor()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+    db.get_connection = MagicMock(return_value=MockConnection())
+
     return db
 
 
