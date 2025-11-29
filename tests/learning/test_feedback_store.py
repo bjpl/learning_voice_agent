@@ -21,7 +21,7 @@ class TestFeedbackStoreInitialization:
     @pytest.mark.asyncio
     async def test_initialize_creates_database(self, test_config_with_temp_db):
         """Test that initialization creates the database file."""
-        store = FeedbackStore(test_config_with_temp_db)
+        store = FeedbackStore(db_path=test_config_with_temp_db.feedback.database_path)
         await store.initialize()
 
         assert os.path.exists(store.db_path)
@@ -37,7 +37,7 @@ class TestFeedbackStoreInitialization:
     @pytest.mark.asyncio
     async def test_close_releases_connection(self, test_config_with_temp_db):
         """Test that close releases database connection."""
-        store = FeedbackStore(test_config_with_temp_db)
+        store = FeedbackStore(db_path=test_config_with_temp_db.feedback.database_path)
         await store.initialize()
         await store.close()
 

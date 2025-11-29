@@ -209,9 +209,9 @@ def mock_openai_client():
     mock_client = MagicMock()
     mock_client.audio = MagicMock()
     mock_client.audio.transcriptions = MagicMock()
-    mock_transcription = MagicMock()
-    mock_transcription.text = "This is transcribed text"
-    mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_transcription)
+    # With response_format="text", the API returns a plain string, not an object
+    # So the mock should return a string that can have .strip() called on it
+    mock_client.audio.transcriptions.create = AsyncMock(return_value="This is transcribed text")
     return mock_client
 
 

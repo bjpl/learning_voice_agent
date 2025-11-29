@@ -40,7 +40,7 @@ class SessionReport:
 @dataclass
 class DailyReport:
     """Daily learning summary report"""
-    date: date
+    date: Any  # Can be date or datetime for compatibility
     sessions: Dict[str, Any]
     quality: Dict[str, Any]
     feedback: Dict[str, Any]
@@ -48,6 +48,49 @@ class DailyReport:
     insights: List[str]
     comparison_to_previous: Dict[str, float]
     generated_at: datetime = field(default_factory=datetime.utcnow)
+    report_version: str = "1.0.0"
+    dimension_scores: Dict[str, float] = field(default_factory=dict)
+
+    def model_dump(self) -> Dict[str, Any]:
+        """Convert to dictionary for Pydantic-like compatibility."""
+        return {
+            "date": self.date.isoformat() if self.date else None,
+            "sessions": self.sessions,
+            "quality": self.quality,
+            "feedback": self.feedback,
+            "patterns": self.patterns,
+            "insights": self.insights,
+            "comparison_to_previous": self.comparison_to_previous,
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "report_version": self.report_version,
+            "dimension_scores": self.dimension_scores,
+            "recommendations": self.recommendations
+        }
+
+    @property
+    def total_interactions(self) -> int:
+        """Total interactions count from sessions data."""
+        return self.sessions.get("count", 0)
+
+    @property
+    def average_quality_score(self) -> float:
+        """Average quality score from quality data."""
+        return self.quality.get("average", 0.0)
+
+    @property
+    def recommendations(self) -> List[str]:
+        """Generate recommendations from insights for backward compatibility."""
+        recs = []
+        for insight in self.insights:
+            if "review" in insight.lower() or "below" in insight.lower():
+                recs.append(f"Action: {insight}")
+            elif "excellent" in insight.lower() or "strong" in insight.lower():
+                recs.append("Continue current practices")
+            else:
+                recs.append(insight)
+        if not recs:
+            recs.append("Maintain current learning trajectory")
+        return recs
 
 
 @dataclass
@@ -58,6 +101,20 @@ class QualityTrend:
     rolling_avg: float
     change: float
     dimensions: Dict[str, float]
+
+
+@dataclass
+class TrendResult:
+    """Result of trend calculation for test compatibility."""
+    data_points: int = 0
+    start_value: float = 0.0
+    end_value: float = 0.0
+    change: float = 0.0
+    change_percent: float = 0.0
+    min_value: float = 0.0
+    max_value: float = 0.0
+    average_value: float = 0.0
+    direction: str = "stable"
 
 
 class LearningAnalytics:
@@ -97,6 +154,9 @@ class LearningAnalytics:
         self.patterns = patterns or pattern_store
         self._pattern_detector = None
         self._initialized = False
+        # In-memory storage for test compatibility
+        self._quality_scores: Dict[str, List[Any]] = defaultdict(list)
+        self._interaction_counts: Dict[str, int] = defaultdict(int)
 
     async def initialize(self) -> None:
         """Initialize analytics engine and dependencies"""
@@ -123,6 +183,120 @@ class LearningAnalytics:
                 exc_info=True
             )
             raise
+
+    # =========================================================================
+    # Test Compatibility Methods (in-memory tracking)
+    # =========================================================================
+
+    def record_quality_score(self, score: Any) -> None:
+        """
+        Record a quality score in memory for tracking.
+
+        Args:
+            score: QualityScore object with session_id attribute
+        """
+        session_id = getattr(score, 'session_id', 'default')
+        self._quality_scores[session_id].append(score)
+
+    def increment_interaction_count(self, session_id: str) -> None:
+        """
+        Increment interaction count for a session.
+
+        Args:
+            session_id: Session to increment count for
+        """
+        self._interaction_counts[session_id] += 1
+
+    async def get_metrics_summary(
+        self,
+        session_id: Optional[str] = None,
+        days: int = 7
+    ) -> Dict[str, Any]:
+        """
+        Get metrics summary for analysis.
+
+        Args:
+            session_id: Optional session to filter by
+            days: Number of days to include
+
+        Returns:
+            Dictionary with metrics summary
+        """
+        total_scored = 0
+        if session_id:
+            total_scored = len(self._quality_scores.get(session_id, []))
+        else:
+            total_scored = sum(len(scores) for scores in self._quality_scores.values())
+
+        return {
+            "period_days": days,
+            "total_scored_interactions": total_scored,
+            "sessions_tracked": len(self._quality_scores),
+            "total_interactions": sum(self._interaction_counts.values())
+        }
+
+    async def calculate_trend(
+        self,
+        dimension: Any,
+        session_id: Optional[str] = None
+    ) -> TrendResult:
+        """
+        Calculate trend for a quality dimension.
+
+        Args:
+            dimension: QualityDimension enum value
+            session_id: Optional session to filter by
+
+        Returns:
+            TrendResult with trend statistics
+        """
+        # Get dimension name
+        dim_name = dimension.value if hasattr(dimension, 'value') else str(dimension)
+
+        # Get relevant scores
+        if session_id:
+            scores = self._quality_scores.get(session_id, [])
+        else:
+            scores = [s for session_scores in self._quality_scores.values() for s in session_scores]
+
+        if not scores:
+            return TrendResult(data_points=0)
+
+        # Extract dimension values
+        values = []
+        for score in scores:
+            val = getattr(score, dim_name.lower(), None)
+            if val is not None:
+                values.append(val)
+
+        if not values:
+            return TrendResult(data_points=0)
+
+        # Calculate statistics
+        start_val = values[0]
+        end_val = values[-1]
+        change = end_val - start_val
+        change_pct = (change / start_val * 100) if start_val != 0 else 0.0
+
+        # Determine direction
+        if change > 0.05:
+            direction = "increasing"
+        elif change < -0.05:
+            direction = "decreasing"
+        else:
+            direction = "stable"
+
+        return TrendResult(
+            data_points=len(values),
+            start_value=start_val,
+            end_value=end_val,
+            change=change,
+            change_percent=change_pct,
+            min_value=min(values),
+            max_value=max(values),
+            average_value=statistics.mean(values),
+            direction=direction
+        )
 
     async def generate_session_report(self, session_id: str) -> Optional[SessionReport]:
         """
@@ -208,7 +382,9 @@ class LearningAnalytics:
 
     async def generate_daily_report(
         self,
-        report_date: Optional[date] = None
+        report_date: Optional[date] = None,
+        session_id: Optional[str] = None,
+        **kwargs  # Accept 'date' for backward compatibility
     ) -> DailyReport:
         """
         Generate daily learning analytics report
@@ -226,6 +402,14 @@ class LearningAnalytics:
             await self.initialize()
 
         try:
+            # Handle 'date' kwarg for backward compatibility
+            if report_date is None and 'date' in kwargs:
+                date_val = kwargs['date']
+                if hasattr(date_val, 'date'):
+                    report_date = date_val.date()  # datetime -> date
+                else:
+                    report_date = date_val  # already a date
+
             if report_date is None:
                 report_date = date.today() - timedelta(days=1)
 

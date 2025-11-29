@@ -829,6 +829,44 @@ class ResponseAdapter:
             "cache_status": session_id in self._preference_cache
         }
 
+    def get_adaptation_hints(
+        self,
+        session_id: str,
+        quality_score: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Get adaptation hints based on quality score.
+
+        This is a wrapper for test compatibility that provides
+        hints for response adaptation based on quality metrics.
+
+        Args:
+            session_id: Session identifier
+            quality_score: Optional quality score (0-1)
+
+        Returns:
+            Dictionary with adaptation hints
+        """
+        hints = {
+            "session_id": session_id,
+            "should_adapt": False,
+            "suggestions": [],
+            "priority": "normal"
+        }
+
+        if quality_score is not None:
+            if quality_score < 0.5:
+                hints["should_adapt"] = True
+                hints["priority"] = "high"
+                hints["suggestions"].append("Consider adjusting response style")
+                hints["suggestions"].append("Review clarity and helpfulness")
+            elif quality_score < 0.7:
+                hints["should_adapt"] = True
+                hints["priority"] = "medium"
+                hints["suggestions"].append("Minor adjustments recommended")
+
+        return hints
+
 
 # =============================================================================
 # Factory Function

@@ -75,16 +75,19 @@ def learning_config():
 
 
 @pytest.fixture
-def test_config_with_temp_db():
+def test_config_with_temp_db(tmp_path):
     """Learning config with temporary database."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config = LearningConfig()
-        # Set database paths that exist on LearningConfig
-        config.db_path = os.path.join(tmpdir, "learning.db")
-        config.learning_db_path = os.path.join(tmpdir, "learning_data.db")
-        # Set feedback database path
-        config.feedback.database_path = os.path.join(tmpdir, "test_feedback.db")
-        yield config
+    # Use pytest's tmp_path fixture which persists through the entire test
+    tmpdir = tmp_path / "learning_db"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+
+    config = LearningConfig()
+    # Set database paths that exist on LearningConfig
+    config.db_path = str(tmpdir / "learning.db")
+    config.learning_db_path = str(tmpdir / "learning_data.db")
+    # Set feedback database path
+    config.feedback.database_path = str(tmpdir / "test_feedback.db")
+    yield config
 
 
 # ============================================================================
@@ -441,7 +444,7 @@ async def full_learning_system(test_config_with_temp_db):
 
     config = test_config_with_temp_db
 
-    feedback_store = FeedbackStore(config)
+    feedback_store = FeedbackStore(db_path=config.feedback.database_path)
     await feedback_store.initialize()
 
     feedback_collector = FeedbackCollector(config=config, feedback_store=feedback_store)

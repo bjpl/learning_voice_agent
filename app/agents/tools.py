@@ -12,7 +12,7 @@ WHY: Easy to add new tools without modifying agent code
 """
 import math
 import operator
-from datetime import datetime, timezone
+from datetime import datetime, timezone as dt_timezone
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 from app.logger import conversation_logger
@@ -314,7 +314,7 @@ class ToolRegistry:
         conversation_logger.info("datetime_tool_executed", format=format, timezone=timezone)
 
         try:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(dt_timezone.utc)
 
             if format == "date":
                 result = now.strftime("%Y-%m-%d")

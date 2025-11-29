@@ -287,7 +287,7 @@ class TestDataPersistenceWorkflow:
     """Test workflows with data persistence"""
 
     @pytest.mark.asyncio
-    async def test_conversation_saved_to_database(self, orchestrator, test_agent_db):
+    async def test_conversation_saved_to_database(self, orchestrator, test_database):
         """Test conversations are saved to database"""
         session_id = "persist-test-session"
 
@@ -301,8 +301,8 @@ class TestDataPersistenceWorkflow:
 
         response = await orchestrator.process(message)
 
-        # Save to database
-        await test_agent_db.save_exchange(
+        # Save to database (use test_database instead of test_agent_db)
+        await test_database.save_exchange(
             session_id,
             message.content["text"],
             response.content["text"],
@@ -310,7 +310,7 @@ class TestDataPersistenceWorkflow:
         )
 
         # Retrieve from database
-        history = await test_agent_db.get_session_history(session_id)
+        history = await test_database.get_session_history(session_id)
 
         assert len(history) > 0
         assert history[0]["user_text"] == message.content["text"]

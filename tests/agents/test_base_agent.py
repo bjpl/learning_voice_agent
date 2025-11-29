@@ -136,7 +136,7 @@ class TestCreateResponse:
     def test_create_response_sets_correlation_id(self, concrete_agent):
         """Test correlation_id links to original message"""
         original = AgentMessage(
-            id="original-123",
+            message_id="original-123",
             sender="user",
             recipient="test_agent",
             message_type=MessageType.CONVERSATION_REQUEST,

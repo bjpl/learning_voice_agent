@@ -166,16 +166,20 @@ async def handle_voice_webhook(
     PATTERN: Main Twilio voice webhook
     WHY: Entry point for phone calls
     """
-    # Parse form data
-    form = await request.form()
-    call_sid = form.get('CallSid')
-    from_number = form.get('From')
-    call_status = form.get('CallStatus')
-    
-    # Validate request
+    # Read body first for validation (stream can only be consumed once)
     body = await request.body()
-    if not twilio_handler.validate_request(request, body.decode()):
+    body_str = body.decode()
+
+    # Validate request before processing
+    if not twilio_handler.validate_request(request, body_str):
         raise HTTPException(403, "Invalid request signature")
+
+    # Parse form data from body (since stream is consumed)
+    from urllib.parse import parse_qs
+    parsed = parse_qs(body_str)
+    call_sid = parsed.get('CallSid', [''])[0]
+    from_number = parsed.get('From', [''])[0]
+    call_status = parsed.get('CallStatus', [''])[0]
     
     # Create or get session
     session_id = f"twilio_{call_sid}"

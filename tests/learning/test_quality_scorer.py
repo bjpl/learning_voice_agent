@@ -9,7 +9,8 @@ import pytest
 from datetime import datetime
 
 from app.learning.quality_scorer import QualityScorer
-from app.learning.models import QualityScore, QualityDimension, Feedback, FeedbackType
+from app.learning.scoring_models import QualityScore
+from app.learning.models import QualityDimension, Feedback, FeedbackType
 
 
 class TestQualityScorerBasics:

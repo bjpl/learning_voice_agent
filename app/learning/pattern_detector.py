@@ -522,8 +522,10 @@ class PatternDetector:
 
     def _normalize_text(self, text: str) -> Set[str]:
         """Normalize text to set of tokens"""
-        # Simple tokenization and lowercasing
-        words = text.lower().split()
+        import re
+        # Remove punctuation and tokenize
+        text_clean = re.sub(r'[^\w\s]', '', text.lower())
+        words = text_clean.split()
         # Remove common stop words
         stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
                       'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
@@ -607,10 +609,10 @@ class PatternDetector:
             mean_x = statistics.mean(x)
             mean_y = statistics.mean(y)
 
-            # Calculate covariance and standard deviations
-            cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y)) / n
-            std_x = statistics.stdev(x)
-            std_y = statistics.stdev(y)
+            # Calculate covariance and standard deviations (use sample formula n-1 for both)
+            cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y)) / (n - 1)
+            std_x = statistics.stdev(x)  # Uses n-1
+            std_y = statistics.stdev(y)  # Uses n-1
 
             if std_x == 0 or std_y == 0:
                 return None, 1.0

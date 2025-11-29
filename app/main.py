@@ -364,6 +364,8 @@ async def handle_conversation(
             intent=conversation_handler.detect_intent(user_text)
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Conversation error: {e}")
         raise HTTPException(500, str(e))

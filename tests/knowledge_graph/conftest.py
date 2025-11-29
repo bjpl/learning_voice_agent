@@ -14,12 +14,13 @@ def mock_neo4j_driver():
     # Mock session
     session = AsyncMock()
 
-    # Mock query results for concept operations
+    # Mock query results for concept operations (includes 'id' for entity operations)
     concept_result = AsyncMock()
     concept_result.single = AsyncMock(return_value={
         'name': 'test_concept',
         'frequency': 5,
-        'description': 'Test description'
+        'description': 'Test description',
+        'id': 'entity_12345'  # For add_entity operations
     })
 
     # Mock query results for relationship queries
@@ -42,12 +43,13 @@ def mock_neo4j_driver():
     # Default to concept result
     session.run = AsyncMock(return_value=concept_result)
 
-    # Context manager for session
+    # Context manager for session - must return fresh context manager each call
     @asynccontextmanager
     async def get_session(database=None):
         yield session
 
-    driver.session = MagicMock(return_value=get_session())
+    # Use side_effect to return a new context manager each time session() is called
+    driver.session = MagicMock(side_effect=lambda database=None: get_session(database))
     driver.verify_connectivity = AsyncMock()
     driver.close = AsyncMock()
 

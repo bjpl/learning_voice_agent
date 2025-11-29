@@ -8,12 +8,23 @@ Tests the main document processing factory class including:
 - Metadata extraction
 - Structure extraction
 - Text chunking
+
+NOTE: Requires PyMuPDF package. Tests are skipped if not available.
 """
 
 import pytest
 import os
 import tempfile
 from pathlib import Path
+
+# Check if PyMuPDF is available
+try:
+    import fitz
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(not PYMUPDF_AVAILABLE, reason="PyMuPDF not installed")
 
 from app.documents import DocumentProcessor, DocumentConfig
 from app.documents.document_processor import (

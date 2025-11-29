@@ -857,7 +857,357 @@ class FeedbackStore:
     async def close(self) -> None:
         """Close the store (cleanup if needed)."""
         self._initialized = False
+        self._db = None
         logger.info("feedback_store_closed", db_path=self.db_path)
+
+    # ========================================================================
+    # GENERIC FEEDBACK API (Legacy compatibility)
+    # ========================================================================
+
+    async def store(self, feedback: 'Feedback') -> str:
+        """
+        Store a generic feedback item (legacy API compatibility).
+
+        Args:
+            feedback: Generic Feedback model instance
+
+        Returns:
+            Feedback ID
+        """
+        from app.learning.models import Feedback as GenericFeedback, FeedbackType
+
+        try:
+            async with self.get_connection() as db:
+                # Ensure table exists
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS generic_feedback (
+                        id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL,
+                        query_id TEXT NOT NULL,
+                        feedback_type TEXT NOT NULL,
+                        source TEXT,
+                        rating REAL,
+                        text TEXT,
+                        correction TEXT,
+                        original_query TEXT,
+                        original_response TEXT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        user_id TEXT,
+                        metadata TEXT
+                    )
+                """)
+
+                await db.execute(
+                    """
+                    INSERT INTO generic_feedback
+                    (id, session_id, query_id, feedback_type, source, rating, text,
+                     correction, original_query, original_response, timestamp, user_id, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        feedback.id,
+                        feedback.session_id,
+                        feedback.query_id,
+                        feedback.feedback_type.value,
+                        feedback.source.value if feedback.source else None,
+                        feedback.rating,
+                        feedback.text,
+                        feedback.correction,
+                        feedback.original_query,
+                        feedback.original_response,
+                        feedback.timestamp.isoformat(),
+                        feedback.user_id,
+                        json.dumps(feedback.metadata) if feedback.metadata else None
+                    )
+                )
+                await db.commit()
+
+            return feedback.id
+
+        except Exception as e:
+            logger.error("store_generic_feedback_failed", error=str(e))
+            raise
+
+    async def get(self, feedback_id: str) -> 'Optional[Feedback]':
+        """
+        Get a feedback item by ID (legacy API compatibility).
+
+        Args:
+            feedback_id: Feedback ID
+
+        Returns:
+            Feedback instance or None
+        """
+        from app.learning.models import Feedback as GenericFeedback, FeedbackType, FeedbackSource
+
+        try:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "SELECT * FROM generic_feedback WHERE id = ?",
+                    (feedback_id,)
+                )
+                row = await cursor.fetchone()
+
+                if not row:
+                    return None
+
+                return GenericFeedback(
+                    id=row['id'],
+                    session_id=row['session_id'],
+                    query_id=row['query_id'],
+                    feedback_type=FeedbackType(row['feedback_type']),
+                    source=FeedbackSource(row['source']) if row['source'] else FeedbackSource.USER_BUTTON,
+                    rating=row['rating'],
+                    text=row['text'],
+                    correction=row['correction'],
+                    original_query=row['original_query'] or "",
+                    original_response=row['original_response'] or "",
+                    timestamp=datetime.fromisoformat(row['timestamp']),
+                    user_id=row['user_id'],
+                    metadata=json.loads(row['metadata']) if row['metadata'] else {}
+                )
+
+        except Exception as e:
+            logger.error("get_generic_feedback_failed", error=str(e))
+            return None
+
+    async def query(
+        self,
+        session_id: Optional[str] = None,
+        query_id: Optional[str] = None,
+        feedback_type: Optional['FeedbackType'] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0,
+        min_rating: Optional[float] = None,
+        max_rating: Optional[float] = None,
+        **kwargs
+    ) -> 'List[Feedback]':
+        """
+        Query feedback with filters (legacy API compatibility).
+
+        Returns:
+            List of matching Feedback instances
+        """
+        from app.learning.models import Feedback as GenericFeedback, FeedbackType as FT, FeedbackSource
+
+        try:
+            async with self.get_connection() as db:
+                conditions = []
+                params = []
+
+                if session_id:
+                    conditions.append("session_id = ?")
+                    params.append(session_id)
+
+                if query_id:
+                    conditions.append("query_id = ?")
+                    params.append(query_id)
+
+                if feedback_type:
+                    conditions.append("feedback_type = ?")
+                    params.append(feedback_type.value if hasattr(feedback_type, 'value') else feedback_type)
+
+                if start_time:
+                    conditions.append("timestamp >= ?")
+                    params.append(start_time.isoformat())
+
+                if end_time:
+                    conditions.append("timestamp <= ?")
+                    params.append(end_time.isoformat())
+
+                if min_rating is not None:
+                    conditions.append("rating >= ?")
+                    params.append(min_rating)
+
+                if max_rating is not None:
+                    conditions.append("rating <= ?")
+                    params.append(max_rating)
+
+                where_clause = " AND ".join(conditions) if conditions else "1=1"
+                query_sql = f"""
+                    SELECT * FROM generic_feedback
+                    WHERE {where_clause}
+                    ORDER BY timestamp DESC
+                    LIMIT ? OFFSET ?
+                """
+                params.extend([limit, offset])
+
+                cursor = await db.execute(query_sql, params)
+                rows = await cursor.fetchall()
+
+                return [
+                    GenericFeedback(
+                        id=row['id'],
+                        session_id=row['session_id'],
+                        query_id=row['query_id'],
+                        feedback_type=FT(row['feedback_type']),
+                        source=FeedbackSource(row['source']) if row['source'] else FeedbackSource.USER_BUTTON,
+                        rating=row['rating'],
+                        text=row['text'],
+                        correction=row['correction'],
+                        original_query=row['original_query'] or "",
+                        original_response=row['original_response'] or "",
+                        timestamp=datetime.fromisoformat(row['timestamp']),
+                        user_id=row['user_id'],
+                        metadata=json.loads(row['metadata']) if row['metadata'] else {}
+                    )
+                    for row in rows
+                ]
+
+        except Exception as e:
+            logger.error("query_generic_feedback_failed", error=str(e))
+            return []
+
+    async def count(
+        self,
+        session_id: Optional[str] = None,
+        **kwargs
+    ) -> int:
+        """
+        Count feedback items (legacy API compatibility).
+
+        Returns:
+            Count of matching items
+        """
+        try:
+            async with self.get_connection() as db:
+                if session_id:
+                    cursor = await db.execute(
+                        "SELECT COUNT(*) as count FROM generic_feedback WHERE session_id = ?",
+                        (session_id,)
+                    )
+                else:
+                    cursor = await db.execute("SELECT COUNT(*) as count FROM generic_feedback")
+
+                row = await cursor.fetchone()
+                return row['count'] if row else 0
+
+        except Exception as e:
+            logger.error("count_generic_feedback_failed", error=str(e))
+            return 0
+
+    async def get_average_rating(
+        self,
+        session_id: Optional[str] = None,
+        **kwargs
+    ) -> float:
+        """
+        Get average rating (legacy API compatibility).
+
+        Returns:
+            Average rating or 0.0
+        """
+        try:
+            async with self.get_connection() as db:
+                if session_id:
+                    cursor = await db.execute(
+                        "SELECT AVG(rating) as avg_rating FROM generic_feedback WHERE session_id = ? AND rating IS NOT NULL",
+                        (session_id,)
+                    )
+                else:
+                    cursor = await db.execute(
+                        "SELECT AVG(rating) as avg_rating FROM generic_feedback WHERE rating IS NOT NULL"
+                    )
+
+                row = await cursor.fetchone()
+                return row['avg_rating'] if row and row['avg_rating'] else 0.0
+
+        except Exception as e:
+            logger.error("get_average_rating_failed", error=str(e))
+            return 0.0
+
+    async def get_feedback_distribution(
+        self,
+        session_id: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, int]:
+        """
+        Get feedback type distribution (legacy API compatibility).
+
+        Returns:
+            Dict mapping feedback type to count
+        """
+        try:
+            async with self.get_connection() as db:
+                if session_id:
+                    cursor = await db.execute(
+                        """
+                        SELECT feedback_type, COUNT(*) as count
+                        FROM generic_feedback
+                        WHERE session_id = ?
+                        GROUP BY feedback_type
+                        """,
+                        (session_id,)
+                    )
+                else:
+                    cursor = await db.execute(
+                        """
+                        SELECT feedback_type, COUNT(*) as count
+                        FROM generic_feedback
+                        GROUP BY feedback_type
+                        """
+                    )
+
+                rows = await cursor.fetchall()
+                return {row['feedback_type']: row['count'] for row in rows}
+
+        except Exception as e:
+            logger.error("get_feedback_distribution_failed", error=str(e))
+            return {}
+
+    async def delete(self, feedback_id: str) -> bool:
+        """
+        Delete a feedback item by ID (legacy API compatibility).
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        try:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM generic_feedback WHERE id = ?",
+                    (feedback_id,)
+                )
+                await db.commit()
+                return cursor.rowcount > 0
+
+        except Exception as e:
+            logger.error("delete_generic_feedback_failed", error=str(e))
+            return False
+
+    async def delete_old_feedback(self, retention_days: int = 90) -> int:
+        """
+        Delete feedback older than retention period (legacy API compatibility).
+
+        Returns:
+            Number of deleted items
+        """
+        try:
+            cutoff = datetime.utcnow() - timedelta(days=retention_days)
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM generic_feedback WHERE timestamp < ?",
+                    (cutoff.isoformat(),)
+                )
+                await db.commit()
+                return cursor.rowcount
+
+        except Exception as e:
+            logger.error("delete_old_feedback_failed", error=str(e))
+            return 0
+
+    async def vacuum(self) -> None:
+        """
+        Vacuum the database (legacy API compatibility).
+        """
+        try:
+            async with self.get_connection() as db:
+                await db.execute("VACUUM")
+
+        except Exception as e:
+            logger.error("vacuum_failed", error=str(e))
 
 
 # Singleton instance

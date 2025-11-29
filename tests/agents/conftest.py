@@ -39,7 +39,7 @@ def sample_agent_message():
     from app.agents.base import AgentMessage, MessageType
 
     return AgentMessage(
-        id=f"msg-{uuid.uuid4()}",
+        message_id=f"msg-{uuid.uuid4()}",
         sender="user",
         recipient="conversation_agent",
         message_type=MessageType.CONVERSATION_REQUEST,
@@ -84,9 +84,14 @@ def mock_anthropic_client():
     """Mock Anthropic client for Claude API"""
     mock = AsyncMock()
 
+    # Create mock content block with type attribute (required for tool loop)
+    mock_content_block = MagicMock()
+    mock_content_block.type = "text"
+    mock_content_block.text = "This is a helpful response about AI."
+
     # Create mock message response
     mock_message = MagicMock()
-    mock_message.content = [MagicMock(text="This is a helpful response about AI.")]
+    mock_message.content = [mock_content_block]
     mock_message.usage = MagicMock(input_tokens=50, output_tokens=30)
     mock_message.model = "claude-3-5-sonnet-20241022"
     mock_message.stop_reason = "end_turn"
@@ -120,53 +125,69 @@ def mock_openai_client():
 
 @pytest.fixture
 def mock_web_search():
-    """Mock web search function"""
-    async def search(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
-        return [
-            {
-                "title": f"Result {i+1}: {query}",
-                "url": f"https://example.com/result-{i+1}",
-                "snippet": f"This is a search result about {query}. It contains relevant information.",
-                "source": "web",
-                "relevance_score": 0.95 - (i * 0.1),
-                "published_date": "2024-11-20"
-            }
-            for i in range(min(max_results, 3))
-        ]
+    """Mock web search function - returns dict with results"""
+    async def search(query: str, max_results: int = 5) -> Dict[str, Any]:
+        return {
+            "source": "web",
+            "query": query,
+            "results": [
+                {
+                    "title": f"Result {i+1}: {query}",
+                    "url": f"https://example.com/result-{i+1}",
+                    "content": f"This is a search result about {query}. It contains relevant information.",
+                    "snippet": f"This is a search result about {query}. It contains relevant information.",
+                    "source": "web",
+                    "relevance_score": 0.95 - (i * 0.1),
+                    "published_date": "2024-11-20"
+                }
+                for i in range(min(max_results, 3))
+            ]
+        }
 
     return search
 
 @pytest.fixture
 def mock_arxiv_search():
-    """Mock ArXiv paper search"""
-    async def search(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
-        return [
-            {
-                "title": f"Research Paper {i+1}: {query}",
-                "url": f"https://arxiv.org/abs/2024.{10000+i}",
-                "snippet": f"Abstract: This paper explores {query} using novel approaches...",
-                "source": "arxiv",
-                "authors": ["Smith, J.", "Johnson, A.", "Williams, K."],
-                "published_date": "2024-11-15",
-                "relevance_score": 0.9 - (i * 0.1)
-            }
-            for i in range(min(max_results, 2))
-        ]
+    """Mock ArXiv paper search - returns dict with results"""
+    async def search(query: str, max_results: int = 5) -> Dict[str, Any]:
+        return {
+            "source": "arxiv",
+            "query": query,
+            "results": [
+                {
+                    "title": f"Research Paper {i+1}: {query}",
+                    "url": f"https://arxiv.org/abs/2024.{10000+i}",
+                    "snippet": f"Abstract: This paper explores {query} using novel approaches...",
+                    "content": f"Abstract: This paper explores {query} using novel approaches...",
+                    "source": "arxiv",
+                    "authors": ["Smith, J.", "Johnson, A.", "Williams, K."],
+                    "published_date": "2024-11-15",
+                    "relevance_score": 0.9 - (i * 0.1)
+                }
+                for i in range(min(max_results, 2))
+            ]
+        }
 
     return search
 
 @pytest.fixture
 def mock_wikipedia_search():
-    """Mock Wikipedia lookup"""
-    async def search(query: str) -> Dict[str, Any]:
+    """Mock Wikipedia lookup - returns dict with results"""
+    async def search(query: str, max_results: int = 5) -> Dict[str, Any]:
         return {
-            "title": query.title(),
-            "url": f"https://en.wikipedia.org/wiki/{query.replace(' ', '_')}",
-            "snippet": f"Wikipedia article about {query}. Comprehensive information...",
             "source": "wikipedia",
-            "full_text": f"This is the full text of the Wikipedia article about {query}.",
-            "categories": ["Technology", "Computer Science"],
-            "last_updated": "2024-11-15"
+            "query": query,
+            "results": [
+                {
+                    "title": query.title(),
+                    "url": f"https://en.wikipedia.org/wiki/{query.replace(' ', '_')}",
+                    "snippet": f"Wikipedia article about {query}. Comprehensive information...",
+                    "extract": f"This is the full text of the Wikipedia article about {query}.",
+                    "source": "wikipedia",
+                    "categories": ["Technology", "Computer Science"],
+                    "last_updated": "2024-11-15"
+                }
+            ]
         }
 
     return search
@@ -203,9 +224,13 @@ def research_agent(mock_web_search, mock_arxiv_search, mock_wikipedia_search):
     from app.agents.research_agent import ResearchAgent
 
     agent = ResearchAgent()
-    agent.web_search = mock_web_search
-    agent.arxiv_search = mock_arxiv_search
-    agent.wikipedia_search = mock_wikipedia_search
+
+    # Mock the internal methods that the agent actually uses
+    agent._web_search = mock_web_search
+    agent._duckduckgo_search = mock_web_search  # Also mock the fallback
+    agent._tavily_search = mock_web_search
+    agent._arxiv_search = mock_arxiv_search
+    agent._wikipedia_search = mock_wikipedia_search
     agent._initialized = True
 
     return agent

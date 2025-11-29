@@ -14,11 +14,22 @@ The RAG system now uses a modular design with:
 - RAGGenerator: Generates responses with Claude
 
 See tests/test_rag_integration.py for examples of the current architecture.
+
+NOTE: Requires PyMuPDF package. Tests are skipped if not available.
 """
 
 import pytest
 import os
 from pathlib import Path
+
+# Check if PyMuPDF is available
+try:
+    import fitz
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(not PYMUPDF_AVAILABLE, reason="PyMuPDF not installed")
 
 from app.documents import DocumentProcessor, DocumentConfig
 from app.rag import (

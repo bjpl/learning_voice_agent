@@ -457,6 +457,8 @@ def test_db(test_database):
 @pytest.fixture
 def mock_neo4j_driver():
     """Mock Neo4j driver with sessions"""
+    from contextlib import asynccontextmanager
+
     driver = AsyncMock()
     driver.verify_connectivity = AsyncMock()
     driver.close = AsyncMock()
@@ -491,32 +493,75 @@ def mock_neo4j_driver():
 
     session.run = AsyncMock(return_value=concept_result)
 
-    # Mock session context manager
+    # Mock session as async context manager
     session.__aenter__ = AsyncMock(return_value=session)
-    session.__aexit__ = AsyncMock()
+    session.__aexit__ = AsyncMock(return_value=None)
 
-    driver.session = MagicMock(return_value=session)
+    # Create a proper async context manager for driver.session()
+    class MockSessionContextManager:
+        async def __aenter__(self):
+            return session
+        async def __aexit__(self, *args):
+            return None
+
+    driver.session = MagicMock(return_value=MockSessionContextManager())
 
     return driver, session, concept_result, related_result, stats_result
 
 
 @pytest.fixture
 def mock_knowledge_graph_store(mock_neo4j_driver):
-    """Mock KnowledgeGraphStore instance"""
-    from app.knowledge_graph.graph_store import KnowledgeGraphStore
+    """Mock KnowledgeGraphStore instance using MagicMock to properly override decorated methods"""
     from app.knowledge_graph.config import KnowledgeGraphConfig
 
-    driver, session, _, _, _ = mock_neo4j_driver
+    driver, session, concept_result, related_result, stats_result = mock_neo4j_driver
 
-    config = KnowledgeGraphConfig()
-    store = KnowledgeGraphStore(config)
-
-    # Set up mocks
-    store.driver = driver
+    # Create a MagicMock that behaves like KnowledgeGraphStore
+    store = MagicMock()
     store._initialized = True
+    store.driver = driver
+    store.config = KnowledgeGraphConfig()
 
-    # Mock session context manager
-    store.session = lambda: session
+    # Set up async method mocks
+    store.add_concept = AsyncMock(side_effect=lambda name, **kwargs: name)
+    store.add_entity = AsyncMock(side_effect=lambda text, entity_type, **kwargs: f"entity_{text}")
+    store.add_relationship = AsyncMock(return_value=True)
+    store.add_session = AsyncMock(return_value=True)
+
+    store.get_concept = AsyncMock(return_value=concept_result.single.return_value)
+
+    async def get_related_impl(concept, max_depth=2, min_strength=0.0, limit=10):
+        values = related_result.values.return_value
+        return [
+            {'name': v[0], 'description': v[1], 'frequency': v[2],
+             'relationship_types': v[3], 'strengths': v[4], 'distance': v[5]}
+            for v in values
+        ]
+    store.get_related_concepts = AsyncMock(side_effect=get_related_impl)
+
+    store.get_most_discussed_concepts = AsyncMock(return_value=[
+        {'name': 'machine learning', 'description': 'ML', 'frequency': 42},
+        {'name': 'neural networks', 'description': 'NN', 'frequency': 35}
+    ])
+
+    async def get_stats_impl():
+        data = stats_result.single.return_value
+        if data:
+            return {
+                'concepts': data.get('concept_count', 0),
+                'relationships': data.get('relationship_count', 0),
+                'entities': data.get('entity_count', 0),
+                'sessions': data.get('session_count', 0),
+                'topics': data.get('topic_count', 0)
+            }
+        return {'concepts': 0, 'relationships': 0, 'entities': 0, 'sessions': 0, 'topics': 0}
+    store.get_graph_stats = AsyncMock(side_effect=get_stats_impl)
+
+    async def close_impl():
+        store._initialized = False
+    store.close = AsyncMock(side_effect=close_impl)
+
+    store.initialize = AsyncMock(return_value=None)
 
     return store
 

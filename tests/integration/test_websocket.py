@@ -7,6 +7,33 @@ import json
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch, MagicMock
 
+from app.security.models import TokenData
+from app.security.dependencies import websocket_auth
+
+
+# Create mock token data for auth bypass
+def mock_websocket_auth():
+    """Mock websocket auth that returns valid token data."""
+    import uuid
+    from datetime import datetime
+    return TokenData(
+        sub="test-user-id",
+        email="test@example.com",
+        role="user",
+        exp=9999999999,
+        jti=str(uuid.uuid4()),
+        iat=int(datetime.utcnow().timestamp()),
+    )
+
+
+@pytest.fixture(autouse=True)
+def bypass_websocket_auth(client):
+    """Automatically bypass websocket auth for all tests in this module."""
+    from app.main import app
+    app.dependency_overrides[websocket_auth] = mock_websocket_auth
+    yield
+    app.dependency_overrides.pop(websocket_auth, None)
+
 
 class TestWebSocketConnection:
     """Test WebSocket connection and messaging"""
@@ -196,4 +223,4 @@ class TestWebSocketPerformance:
                 websocket.receive_json()
 
             # With mocks, should be very fast (< 100ms)
-            assert timing.elapsed < 0.1
+            assert timing.elapsed_ms < 100

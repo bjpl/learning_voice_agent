@@ -5,6 +5,24 @@ Tests for ChromaDB, semantic search, advanced prompts, and offline capabilities
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
+import sys
+import importlib
+
+
+@pytest.fixture(autouse=True)
+def restore_advanced_prompts():
+    """Restore real advanced_prompts module for these tests."""
+    # Remove the mock from sys.modules
+    if 'app.advanced_prompts' in sys.modules:
+        del sys.modules['app.advanced_prompts']
+
+    # Force reimport of the real module
+    from app import advanced_prompts as real_module
+    sys.modules['app.advanced_prompts'] = real_module
+
+    yield
+
+    # No cleanup needed - conftest will re-mock if needed
 
 
 class TestVectorStore:

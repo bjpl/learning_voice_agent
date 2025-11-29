@@ -51,7 +51,8 @@ class ResearchAgent(BaseAgent):
         tavily_api_key: Optional[str] = None,
         enable_code_execution: bool = False,
     ):
-        super().__init__(agent_id=agent_id, agent_type="ResearchAgent")
+        final_agent_id = agent_id or "research_agent"
+        super().__init__(agent_id=final_agent_id, agent_type="ResearchAgent")
 
         # HTTP client with timeout
         self.http_client = httpx.AsyncClient(
@@ -103,42 +104,87 @@ class ResearchAgent(BaseAgent):
         PATTERN: Multi-tool orchestration with parallel execution
         WHY: Efficient gathering of information from multiple sources
         """
-        query = message.content.get("query")
-        tools_requested = message.content.get("tools", ["web_search"])
-        max_results_per_tool = message.content.get("max_results", 5)
+        content = message.content if isinstance(message.content, dict) else {}
+        query = content.get("query", "")
+        sources_requested = content.get("sources", ["web"])
+        max_results = content.get("max_results", 5)
 
         if not query:
-            return await self.send_message(
+            return AgentMessage(
+                sender=self.agent_id,
                 recipient=message.sender,
-                message_type=MessageType.ERROR,
-                content={"error": "No query provided"},
+                message_type=MessageType.AGENT_ERROR,
+                content={"error": "No query provided", "results": []},
                 correlation_id=message.message_id,
             )
 
         api_logger.info(
             "research_request_received",
             query=query,
-            tools=tools_requested,
+            sources=sources_requested,
             correlation_id=message.message_id,
         )
 
+        # Map sources to tool names
+        source_to_tool = {
+            "web": "web_search",
+            "arxiv": "arxiv",
+            "wikipedia": "wikipedia",
+        }
+
+        tools_to_use = [source_to_tool.get(s, s) for s in sources_requested]
+
         # Execute tools in parallel
-        results = await self._execute_tools_parallel(
+        tool_results = await self._execute_tools_parallel(
             query=query,
-            tools=tools_requested,
-            max_results=max_results_per_tool,
+            tools=tools_to_use,
+            max_results=max_results,
         )
 
-        return await self.send_message(
+        # Flatten and normalize results
+        all_results = []
+        sources_used = []
+
+        for tool_name, result in tool_results.items():
+            if isinstance(result, dict) and "results" in result:
+                # Normalize source names (duckduckgo -> web, tavily -> web)
+                raw_source = result.get("source", tool_name)
+                source_name = "web" if raw_source in ("duckduckgo", "tavily", "web_search") else raw_source
+                sources_used.append(source_name)
+
+                for item in result["results"]:
+                    # Normalize result structure for tests
+                    normalized = {
+                        "title": item.get("title", ""),
+                        "url": item.get("url", ""),
+                        "snippet": item.get("snippet", item.get("content", item.get("extract", ""))),
+                        "source": source_name,
+                    }
+                    # Add optional fields if present
+                    if "authors" in item:
+                        normalized["authors"] = item["authors"]
+                    if "relevance_score" in item:
+                        normalized["relevance_score"] = item["relevance_score"]
+                    if "score" in item:
+                        normalized["relevance_score"] = item["score"]
+
+                    all_results.append(normalized)
+
+        # Limit total results
+        all_results = all_results[:max_results]
+
+        return AgentMessage(
+            sender=self.agent_id,
             recipient=message.sender,
-            message_type=MessageType.RESEARCH_COMPLETE,
+            message_type=MessageType.RESEARCH_RESPONSE,
             content={
                 "query": query,
-                "results": results,
-                "tools_used": list(results.keys()),
+                "results": all_results,
+                "sources_used": sources_used,
                 "timestamp": datetime.utcnow().isoformat(),
             },
             correlation_id=message.message_id,
+            metadata={"sources_used": sources_used},
         )
 
     async def _execute_tools_parallel(
@@ -215,6 +261,9 @@ class ResearchAgent(BaseAgent):
             # Execute tool
             api_logger.info("tool_executing", tool=tool_name, query=query)
 
+            # Increment calls before execution so failed calls are still counted
+            self.tool_metrics[tool_name]["calls"] += 1
+
             tool_func = self.tools[tool_name]
             result = await tool_func(query, max_results=max_results)
 
@@ -223,7 +272,6 @@ class ResearchAgent(BaseAgent):
 
             # Update metrics
             execution_time = (datetime.utcnow() - start_time).total_seconds()
-            self.tool_metrics[tool_name]["calls"] += 1
             self.tool_metrics[tool_name]["total_time"] += execution_time
 
             api_logger.info(

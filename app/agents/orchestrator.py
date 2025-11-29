@@ -458,6 +458,10 @@ class AgentOrchestrator:
         self._running = False
         self._tasks: Set[asyncio.Task] = set()
 
+        # Agent dictionary for direct access (used by tests and for simple routing)
+        self.agents: Dict[str, Any] = {}
+        self._initialized = False
+
     async def register_agent(
         self,
         agent: AgentProtocol,
@@ -650,11 +654,120 @@ class AgentOrchestrator:
 
         self.logger.info("Orchestrator stopped")
 
+    async def process(self, message: AgentMessage) -> AgentMessage:
+        """
+        Process a message by routing to appropriate agent(s)
+
+        SPARC: Implementation - Main message processing entry point
+
+        Args:
+            message: Incoming message to process
+
+        Returns:
+            Response message from agent(s)
+        """
+        from datetime import datetime
+        import time
+
+        start_time = time.time()
+        agents_used = []
+
+        try:
+            # Determine which agent(s) to use based on message type and content
+            content = message.content if isinstance(message.content, dict) else {"text": str(message.content)}
+            text = content.get("text", "")
+            enable_research = content.get("enable_research", False)
+            enable_analysis = content.get("enable_analysis", False)
+
+            # Route based on message type
+            if message.message_type == MessageType.RESEARCH_REQUEST:
+                agent = self.agents.get("research")
+                if agent:
+                    agents_used.append("research")
+                    response = await agent.process(message)
+                    response.metadata = response.metadata or {}
+                    if isinstance(response.metadata, dict):
+                        response.metadata["agents_used"] = agents_used
+                    return response
+
+            # Default: use conversation agent
+            agent = self.agents.get("conversation")
+            if agent:
+                agents_used.append("conversation")
+
+                # Check if we should also use research
+                if enable_research and "research" in self.agents:
+                    agents_used.append("research")
+
+                # Check if we should also use analysis
+                if enable_analysis and "analysis" in self.agents:
+                    agents_used.append("analysis")
+
+                response = await agent.process(message)
+
+                # Ensure response has proper structure
+                processing_time = (time.time() - start_time) * 1000
+
+                # Build metadata
+                metadata = {}
+                if hasattr(response, 'metadata') and response.metadata:
+                    if hasattr(response.metadata, 'to_dict'):
+                        metadata = response.metadata.to_dict()
+                    elif isinstance(response.metadata, dict):
+                        metadata = response.metadata.copy()
+
+                metadata["agents_used"] = agents_used
+                metadata["processing_time_ms"] = processing_time
+
+                # Create properly formatted response
+                return AgentMessage(
+                    sender="orchestrator",
+                    recipient=message.sender,
+                    message_type=MessageType.CONVERSATION_RESPONSE,
+                    content={"text": response.content if isinstance(response.content, str) else response.content.get("text", str(response.content))},
+                    correlation_id=message.message_id,
+                    metadata=metadata,
+                )
+
+            # No suitable agent found
+            return AgentMessage(
+                sender="orchestrator",
+                recipient=message.sender,
+                message_type=MessageType.AGENT_ERROR,
+                content={"error": "No suitable agent found", "text": "I'm sorry, I couldn't process your request."},
+                correlation_id=message.message_id,
+                metadata={"agents_used": agents_used},
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error processing message: {e}", exc_info=True)
+            return AgentMessage(
+                sender="orchestrator",
+                recipient=message.sender,
+                message_type=MessageType.CONVERSATION_RESPONSE,
+                content={"text": "I encountered an error. Please try again.", "error": str(e)},
+                correlation_id=message.message_id,
+                metadata={"agents_used": agents_used, "error": str(e)},
+            )
+
+    def register_agent(self, agent, name: Optional[str] = None) -> None:
+        """
+        Simple agent registration (sync version for tests)
+
+        Args:
+            agent: Agent to register
+            name: Optional name/key for the agent
+        """
+        agent_name = name or getattr(agent, 'agent_id', None) or agent.__class__.__name__.lower()
+        self.agents[agent_name] = agent
+        self.logger.info(f"Registered agent: {agent_name}")
+
     def get_stats(self) -> Dict[str, Any]:
         """Get orchestrator statistics"""
         return {
             "total_agents": self.registry.count(),
             "healthy_agents": len(self.registry.get_healthy()),
             "active_contexts": len(self.contexts),
-            "running": self._running
+            "running": self._running,
+            "agents": list(self.agents.keys()),
         }

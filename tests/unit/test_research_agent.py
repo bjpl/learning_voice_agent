@@ -48,10 +48,12 @@ class TestResearchAgent:
 
         response = await research_agent.process(message)
 
-        assert response.message_type == MessageType.RESEARCH_COMPLETE
+        assert response.message_type == MessageType.RESEARCH_RESPONSE
         assert response.content["query"] == "test query"
         assert "results" in response.content
-        assert "web_search" in response.content["results"]
+        # Results is a flat list with source field indicating tool
+        assert len(response.content["results"]) > 0
+        assert response.content["results"][0]["source"] == "web"
 
     async def test_missing_query_error(self, research_agent):
         """Test error when query is missing"""
@@ -64,7 +66,7 @@ class TestResearchAgent:
 
         response = await research_agent.process(message)
 
-        assert response.message_type == MessageType.ERROR
+        assert response.message_type == MessageType.AGENT_ERROR
         assert "No query provided" in response.content["error"]
 
     async def test_parallel_tool_execution(self, research_agent):

@@ -11,6 +11,13 @@ from app.agents.synthesis_agent import SynthesisAgent
 from app.agents.base import AgentMessage, MessageType
 
 
+def check_message_type(msg_type, expected_value: str) -> bool:
+    """Compare message type regardless of whether it's enum or string"""
+    if isinstance(msg_type, MessageType):
+        return msg_type.value == expected_value or msg_type == expected_value
+    return str(msg_type) == expected_value
+
+
 @pytest.fixture
 def synthesis_agent():
     """Create SynthesisAgent instance for testing"""
@@ -174,7 +181,7 @@ class TestSynthesisAgent:
 
         result = await synthesis_agent.handle_message(message)
 
-        assert result.message_type == "synthesis_complete"
+        assert check_message_type(result.message_type, "synthesis_complete")
         assert "summary" in result.content
         assert "key_points" in result.content
         assert "topics_covered" in result.content
@@ -191,6 +198,7 @@ class TestSynthesisAgent:
 
         result = await synthesis_agent.handle_message(message)
 
+        assert check_message_type(result.message_type, "synthesis_complete")
         assert result.content["summary_type"] == "empty"
         assert len(result.content["key_points"]) == 0
 
@@ -207,7 +215,7 @@ class TestSynthesisAgent:
 
         result = await synthesis_agent.handle_message(message)
 
-        assert result.message_type == "synthesis_complete"
+        assert check_message_type(result.message_type, "synthesis_complete")
         assert "recommendations" in result.content
         assert "recommendation_count" in result.content
 
@@ -246,7 +254,7 @@ class TestSynthesisAgent:
 
         result = await synthesis_agent.handle_message(message)
 
-        assert result.message_type == "synthesis_complete"
+        assert check_message_type(result.message_type, "synthesis_complete")
         assert "schedule" in result.content
         assert "algorithm" in result.content
         assert result.content["algorithm"] == "SM-2"
@@ -303,7 +311,7 @@ class TestSynthesisAgent:
 
         result = await synthesis_agent.handle_message(message)
 
-        assert result.message_type == "synthesis_complete"
+        assert check_message_type(result.message_type, "synthesis_complete")
         assert "insights" in result.content
         assert "summary" in result.content
         assert "recommendations" in result.content
@@ -331,7 +339,7 @@ class TestSynthesisAgent:
         # Should process in < 800ms as per spec (excluding Claude API calls)
         # Note: This may be higher if Claude API is called
         assert duration_ms < 2000  # Allow extra time for API
-        assert result.message_type == "synthesis_complete"
+        assert check_message_type(result.message_type, "synthesis_complete")
 
     async def test_metrics_tracking(self, synthesis_agent, sample_analysis):
         """Test metrics tracking"""
@@ -362,7 +370,7 @@ class TestSynthesisAgent:
 
         result = await synthesis_agent.handle_message(message)
 
-        assert result.message_type == "synthesis_complete"
+        assert check_message_type(result.message_type, "synthesis_complete")
         assert "error" in result.content
 
 

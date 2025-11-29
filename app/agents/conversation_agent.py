@@ -69,6 +69,7 @@ class ConversationAgent(BaseAgent):
         agent_id: Optional[str] = None,
         enable_streaming: bool = False,
         enable_tools: bool = True,
+        config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize ConversationAgent
@@ -78,12 +79,19 @@ class ConversationAgent(BaseAgent):
             agent_id: Unique agent identifier (optional)
             enable_streaming: Enable streaming responses
             enable_tools: Enable tool calling
+            config: Optional configuration dictionary
         """
+        # Use default agent_id if not provided
+        final_agent_id = agent_id or "conversation_agent"
+
         # Initialize BaseAgent with compatible signature
-        super().__init__(agent_id=agent_id, agent_type="ConversationAgent")
-        self.model = model
-        self.enable_streaming = enable_streaming
-        self.enable_tools = enable_tools
+        super().__init__(agent_id=final_agent_id, agent_type="ConversationAgent")
+
+        # Handle config dictionary
+        config = config or {}
+        self.model = config.get("model", model)
+        self.enable_streaming = config.get("enable_streaming", enable_streaming)
+        self.enable_tools = config.get("enable_tools", enable_tools)
 
         # For backward compatibility with AgentMetadata
         self.agent_name = self.agent_type
@@ -426,11 +434,11 @@ End conversation gracefully:
             # Update agent metrics
             self.update_metrics(metadata)
 
-            # Create response message
+            # Create response message with proper dict content structure
             response_message = AgentMessage(
                 role=MessageRole.ASSISTANT,
-                content=response_text,
-                message_type=MessageType.TEXT,
+                content={"text": response_text, "model": self.model, "tokens_used": metadata.tokens_used},
+                message_type=MessageType.CONVERSATION_RESPONSE,
                 metadata=metadata,
                 context=context,
             )
@@ -450,8 +458,8 @@ End conversation gracefully:
 
             return AgentMessage(
                 role=MessageRole.ASSISTANT,
-                content="I'm experiencing high load right now. Could you try again in a moment?",
-                message_type=MessageType.TEXT,
+                content={"text": "I'm experiencing high load right now. Could you try again in a moment?", "error": "circuit_breaker_open"},
+                message_type=MessageType.AGENT_ERROR,
                 metadata=metadata,
             )
 
@@ -461,8 +469,8 @@ End conversation gracefully:
 
             return AgentMessage(
                 role=MessageRole.ASSISTANT,
-                content="That's taking longer than expected. Could you try asking again?",
-                message_type=MessageType.TEXT,
+                content={"text": "That's taking longer than expected. Could you try asking again?", "error": "timeout"},
+                message_type=MessageType.AGENT_ERROR,
                 metadata=metadata,
             )
 
@@ -472,8 +480,8 @@ End conversation gracefully:
 
             return AgentMessage(
                 role=MessageRole.ASSISTANT,
-                content="I need a moment to catch up. Could you repeat that?",
-                message_type=MessageType.TEXT,
+                content={"text": "I need a moment to catch up. Could you repeat that?", "error": "rate_limit"},
+                message_type=MessageType.AGENT_ERROR,
                 metadata=metadata,
             )
 
@@ -488,8 +496,8 @@ End conversation gracefully:
 
             return AgentMessage(
                 role=MessageRole.ASSISTANT,
-                content="Something went wrong on my end. Could you say that again?",
-                message_type=MessageType.TEXT,
+                content={"text": "Something went wrong on my end. Could you say that again?", "error": str(e)},
+                message_type=MessageType.AGENT_ERROR,
                 metadata=metadata,
             )
 
@@ -569,6 +577,72 @@ End conversation gracefully:
         }
 
     # Intelligence Features
+
+    def _format_context(self, context: List[Dict[str, Any]]) -> str:
+        """
+        Format conversation context for display or processing
+
+        PATTERN: Context formatter for readability
+        WHY: Enable tests and external code to format context consistently
+
+        Args:
+            context: List of conversation exchanges
+
+        Returns:
+            Formatted string representation of context
+        """
+        if not context:
+            return ""
+
+        formatted_parts = []
+        for exchange in context:
+            if "user" in exchange:
+                formatted_parts.append(f"User: {exchange['user']}")
+            if "agent" in exchange:
+                formatted_parts.append(f"Agent: {exchange['agent']}")
+
+        return "\n".join(formatted_parts)
+
+    def _should_use_tool(self, text: str) -> List[str]:
+        """
+        Determine which tools should be used for a given text
+
+        PATTERN: Rule-based tool selection
+        WHY: Quick tool detection without API call
+
+        Args:
+            text: User input text
+
+        Returns:
+            List of tool names that should be used
+        """
+        tools_needed = []
+        text_lower = text.lower()
+
+        # Calculator detection
+        math_keywords = ["calculate", "compute", "math", "plus", "minus", "times",
+                        "divided", "multiply", "add", "subtract", "sum", "product",
+                        "what is", "equals"]
+        math_patterns = any(kw in text_lower for kw in math_keywords)
+        has_numbers = any(c.isdigit() for c in text)
+        has_operators = any(op in text for op in ["+", "-", "*", "/", "×", "÷"])
+
+        if (math_patterns and has_numbers) or (has_numbers and has_operators):
+            tools_needed.append("calculator")
+
+        # Date/time detection
+        time_keywords = ["what time", "what day", "date today", "current time",
+                        "today's date", "what's the time", "what is the date"]
+        if any(kw in text_lower for kw in time_keywords):
+            tools_needed.append("datetime")
+
+        # Memory/search detection
+        memory_keywords = ["remember", "recall", "search my", "find my",
+                         "what did I say", "previous conversation"]
+        if any(kw in text_lower for kw in memory_keywords):
+            tools_needed.append("memory")
+
+        return tools_needed
 
     def detect_intent(self, text: str) -> str:
         """

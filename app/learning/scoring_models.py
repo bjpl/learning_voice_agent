@@ -108,6 +108,9 @@ class QualityScore:
     # Optional metadata for debugging and analysis
     response_id: Optional[str] = None
     session_id: Optional[str] = None
+    query_id: Optional[str] = None
+    query_text: Optional[str] = None
+    response_text: Optional[str] = None
     query_length: Optional[int] = None
     response_length: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None

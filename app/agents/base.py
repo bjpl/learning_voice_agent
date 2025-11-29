@@ -67,9 +67,20 @@ class MessageType(Enum):
     RESPONSE = "response"
     ERROR = "error"
     STATUS = "status"
+    TEXT = "text"  # For conversation text messages
+    CONVERSATION_REQUEST = "conversation_request"  # Request for conversation
+    CONVERSATION_RESPONSE = "conversation_response"  # Response from conversation
+    ANALYSIS_REQUEST = "analysis_request"  # Request for analysis
+    ANALYSIS_RESPONSE = "analysis_response"  # Response from analysis
+    RESEARCH_REQUEST = "research_request"  # Request for research
+    RESEARCH_RESPONSE = "research_response"  # Response from research
+    SYNTHESIS_REQUEST = "synthesis_request"  # Request for synthesis
+    SYNTHESIS_RESPONSE = "synthesis_response"  # Response from synthesis
     RESEARCH_COMPLETE = "research_complete"
     ANALYSIS_COMPLETE = "analysis_complete"
     CONVERSATION_COMPLETE = "conversation_complete"
+    SYNTHESIS_COMPLETE = "synthesis_complete"  # Synthesis operation complete
+    AGENT_ERROR = "agent_error"  # Error from agent processing
 
 
 @dataclass
@@ -78,41 +89,64 @@ class AgentMessage:
     SPECIFICATION: Structured message for agent communication
     PATTERN: Immutable message with metadata
     WHY: Type-safe, traceable agent interactions
+
+    Supports both:
+    - Agent-to-agent communication (sender/recipient)
+    - Conversation context (role/content as string)
     """
     message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     sender: str = ""
     recipient: str = ""
     message_type: MessageType = MessageType.REQUEST
-    content: Dict[str, Any] = field(default_factory=dict)
+    content: Any = field(default_factory=dict)  # Can be Dict or str
     timestamp: datetime = field(default_factory=datetime.utcnow)
     correlation_id: Optional[str] = None  # For tracking related messages
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Any = field(default_factory=dict)  # Can be Dict or AgentMetadata
+    # Conversation-specific fields
+    role: Optional["MessageRole"] = None  # For conversation context
+    context: Optional[Dict[str, Any]] = None  # For conversation state
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize message to dictionary"""
-        return {
+        result = {
             "message_id": self.message_id,
             "sender": self.sender,
             "recipient": self.recipient,
-            "message_type": self.message_type.value,
+            "message_type": self.message_type.value if isinstance(self.message_type, MessageType) else self.message_type,
             "content": self.content,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat() if isinstance(self.timestamp, datetime) else self.timestamp,
             "correlation_id": self.correlation_id,
-            "metadata": self.metadata,
         }
+        # Handle metadata (could be dict or AgentMetadata)
+        if hasattr(self.metadata, 'to_dict'):
+            result["metadata"] = self.metadata.to_dict()
+        else:
+            result["metadata"] = self.metadata
+        # Add optional fields if present
+        if self.role is not None:
+            result["role"] = self.role.value if isinstance(self.role, MessageRole) else self.role
+        if self.context is not None:
+            result["context"] = self.context
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AgentMessage":
         """Deserialize message from dictionary"""
+        role = None
+        if "role" in data:
+            role_val = data["role"]
+            role = MessageRole(role_val) if isinstance(role_val, str) else role_val
         return cls(
             message_id=data.get("message_id", str(uuid.uuid4())),
             sender=data.get("sender", ""),
             recipient=data.get("recipient", ""),
-            message_type=MessageType(data.get("message_type", "request")),
+            message_type=MessageType(data.get("message_type", "request")) if isinstance(data.get("message_type"), str) else data.get("message_type", MessageType.REQUEST),
             content=data.get("content", {}),
             timestamp=datetime.fromisoformat(data["timestamp"]) if isinstance(data.get("timestamp"), str) else data.get("timestamp", datetime.utcnow()),
             correlation_id=data.get("correlation_id"),
             metadata=data.get("metadata", {}),
+            role=role,
+            context=data.get("context"),
         )
 
 
@@ -337,6 +371,26 @@ class BaseAgent(ABC):
             "last_active": self.metrics["last_active"].isoformat() if self.metrics["last_active"] else None,
         }
 
+    def update_metrics(self, metadata: Any) -> None:
+        """
+        Update agent metrics from response metadata
+
+        PATTERN: Metrics aggregation
+        WHY: Track performance across requests
+
+        Args:
+            metadata: Response metadata containing timing/token info
+        """
+        if hasattr(metadata, 'processing_time_ms') and metadata.processing_time_ms:
+            self.metrics["processing_times"].append(metadata.processing_time_ms / 1000)
+
+        if hasattr(metadata, 'tokens_used') and metadata.tokens_used:
+            if "total_tokens" not in self.metrics:
+                self.metrics["total_tokens"] = 0
+            self.metrics["total_tokens"] += metadata.tokens_used
+
+        self.metrics["last_active"] = datetime.utcnow()
+
     def register_handler(self, message_type: MessageType, handler: Callable) -> None:
         """
         Register a handler for a specific message type
@@ -346,6 +400,59 @@ class BaseAgent(ABC):
         """
         self.handlers[message_type] = handler
         self.logger.debug("handler_registered", message_type=message_type.value)
+
+    async def initialize(self) -> None:
+        """
+        Initialize the agent resources
+
+        PATTERN: Lifecycle hook for setup
+        WHY: Allow agents to set up resources before processing
+
+        Override this method in subclasses for custom initialization.
+        """
+        self.logger.debug("agent_initializing")
+
+    async def cleanup(self) -> None:
+        """
+        Clean up agent resources
+
+        PATTERN: Lifecycle hook for teardown
+        WHY: Ensure proper resource cleanup
+
+        Override this method in subclasses for custom cleanup.
+        """
+        self.logger.debug("agent_cleaning_up")
+
+    def _create_response(
+        self,
+        content: Dict[str, Any],
+        message_type: MessageType,
+        original_message: AgentMessage,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> AgentMessage:
+        """
+        Create a response message to an original message
+
+        PATTERN: Factory method for responses
+        WHY: Standardize response creation with proper correlation
+
+        Args:
+            content: Response content
+            message_type: Type of response message
+            original_message: The message being responded to
+            metadata: Optional additional metadata
+
+        Returns:
+            AgentMessage configured as a response
+        """
+        return AgentMessage(
+            sender=self.agent_id,
+            recipient=original_message.sender,
+            message_type=message_type,
+            content=content,
+            correlation_id=original_message.message_id,
+            metadata=metadata or {},
+        )
 
 
 # ============================================================================

@@ -240,7 +240,7 @@ class ConceptExtractor:
             analysis_message = AgentMessage(
                 sender="concept_extractor",
                 recipient="analysis_agent",
-                message_type=MessageType.COMMAND,
+                message_type=MessageType.ANALYSIS_REQUEST,
                 content={
                     "action": "analyze_conversation",
                     "exchanges": exchanges
@@ -313,7 +313,7 @@ class ConceptExtractor:
         message = AgentMessage(
             sender="concept_extractor",
             recipient="analysis_agent",
-            message_type=MessageType.COMMAND,
+            message_type=MessageType.ANALYSIS_REQUEST,
             content={
                 "action": "analyze_text",
                 "text": text

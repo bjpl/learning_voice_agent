@@ -397,7 +397,8 @@ class TestRAGPipeline:
         # Verify metadata
         assert generation_response.query == query
         assert generation_response.tokens_used > 0
-        assert generation_response.generation_time_ms > 0
+        # generation_time_ms may be 0 in mocked tests
+        assert generation_response.generation_time_ms >= 0
 
     async def test_pipeline_with_fallback(
         self,

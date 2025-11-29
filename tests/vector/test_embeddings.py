@@ -220,13 +220,20 @@ class TestGenerateEmbedding:
 
     async def test_generate_embedding_error_handling(self):
         """Test error handling in embedding generation"""
+        # Reset singleton state to avoid pollution from other tests
+        EmbeddingGenerator._instance = None
         generator = EmbeddingGenerator()
         generator._initialized = True
         generator.model = MagicMock()
         generator.model.encode = MagicMock(side_effect=Exception("Model error"))
+        generator.cache = None  # Ensure cache doesn't interfere
 
-        with pytest.raises(Exception, match="Model error"):
-            await generator.generate_embedding("test")
+        try:
+            with pytest.raises(Exception, match="Model error"):
+                await generator.generate_embedding("test", use_cache=False)
+        finally:
+            # Clean up singleton
+            EmbeddingGenerator._instance = None
 
 
 @pytest.mark.asyncio
@@ -315,8 +322,11 @@ class TestGenerateBatch:
         """Test batch generation with progress bar"""
         texts = ["text"] * 10
 
+        # Reset singleton state to avoid pollution
+        EmbeddingGenerator._instance = None
         generator = EmbeddingGenerator()
         generator._initialized = True
+        generator.cache = None  # Disable cache so all texts go to encode
 
         mock_model = MagicMock()
         mock_model.encode = MagicMock(
@@ -324,14 +334,19 @@ class TestGenerateBatch:
         )
         generator.model = mock_model
 
-        await generator.generate_batch(texts, show_progress=True)
+        try:
+            await generator.generate_batch(texts, show_progress=True)
 
-        # Verify show_progress_bar was passed
-        call_args = mock_model.encode.call_args[1]
-        assert call_args['show_progress_bar'] is True
+            # Verify show_progress_bar was passed
+            assert mock_model.encode.called
+            call_args = mock_model.encode.call_args
+            # Check kwargs (index 1) for show_progress_bar
+            assert call_args[1]['show_progress_bar'] is True
+        finally:
+            # Clean up singleton
+            EmbeddingGenerator._instance = None
 
 
-@pytest.mark.asyncio
 class TestEmbeddingGeneratorUtilities:
     """Test utility methods (4 tests)"""
 
@@ -374,6 +389,7 @@ class TestEmbeddingGeneratorUtilities:
 
         assert generator.cache.stats()['size'] == 0
 
+    @pytest.mark.asyncio
     async def test_close_cleanup(self):
         """Test that close cleans up resources"""
         generator = EmbeddingGenerator()

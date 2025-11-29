@@ -8,6 +8,14 @@ Tests are skipped if twilio is not available.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+try:
+    from httpx import AsyncClient, ASGITransport
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    AsyncClient = None
+    ASGITransport = None
+
 # Check if twilio is available
 try:
     import twilio
@@ -46,16 +54,19 @@ class TestTwilioHandler:
     @pytest.mark.unit
     def test_validate_request_no_validator(self):
         """Test request validation without validator (dev mode)"""
+        import os
         with patch('app.twilio_handler.settings') as mock_settings:
             mock_settings.twilio_auth_token = None
 
-            from app.twilio_handler import TwilioHandler
+            # Set TWILIO_ALLOW_UNVALIDATED to allow in dev mode
+            with patch.dict(os.environ, {"TWILIO_ALLOW_UNVALIDATED": "true"}):
+                from app.twilio_handler import TwilioHandler
 
-            handler = TwilioHandler()
-            mock_request = MagicMock()
+                handler = TwilioHandler()
+                mock_request = MagicMock()
 
-            result = handler.validate_request(mock_request, "body")
-            assert result is True  # Skip validation in dev
+                result = handler.validate_request(mock_request, "body")
+                assert result is True  # Skip validation in dev when explicitly allowed
 
 
 class TestCreateGatherResponse:
@@ -410,7 +421,8 @@ class TestHelperFunctions:
             mock_ctx.assert_called_once()
             mock_save.assert_called_once()
             save_args = mock_save.call_args
-            assert save_args[0][3]["source"] == "twilio"
+            # metadata is passed as a keyword argument
+            assert save_args.kwargs["metadata"]["source"] == "twilio"
 
 
 class TestSetupTwilioRoutes:

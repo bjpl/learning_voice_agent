@@ -1485,6 +1485,292 @@ class DashboardService:
         return suggestions[:3]
 
 
+    # =========================================================================
+    # LEGACY API COMPATIBILITY METHODS
+    # =========================================================================
+
+    async def get_dashboard_data(self, use_cache: bool = True) -> 'DashboardData':
+        """
+        Get complete dashboard data (legacy API compatibility).
+
+        PATTERN: Facade method for backwards compatibility
+        WHY: Tests expect this unified method
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        cache_key = "dashboard_data"
+        if use_cache:
+            cached = self._cache.get(cache_key)
+            if cached:
+                return cached
+
+        try:
+            # Gather all dashboard data
+            overview = await self.get_overview_data()
+            progress = await self.get_progress_charts("week")
+            trends = await self.get_trend_charts(["quality", "sessions"], 30)
+            topics = await self.get_topic_breakdown(30)
+            goals = await self.get_goal_progress()
+
+            # Create DashboardData response
+            from app.analytics.progress_models import DashboardData
+
+            data = DashboardData(
+                overview=overview,
+                streak=overview.streak_info,
+                progress_summary=progress.summary,
+                topic_breakdown=topics,
+                goals=goals,
+                generated_at=datetime.utcnow()
+            )
+
+            if use_cache:
+                self._cache.set(cache_key, data, self.config.cache_ttl_seconds)
+
+            return data
+
+        except Exception as e:
+            db_logger.error("get_dashboard_data_failed", error=str(e))
+            from app.analytics.progress_models import DashboardData, ProgressMetrics, LearningStreak
+            return DashboardData(
+                overview=ProgressMetrics(),
+                streak=LearningStreak(),
+                generated_at=datetime.utcnow()
+            )
+
+    async def get_quality_chart_data(self, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        Get quality chart data (legacy API compatibility).
+
+        Returns list of {date, quality} dicts.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days)
+            daily_data = await self._get_daily_progress_range(start_date, end_date)
+
+            return [
+                {
+                    "date": d["date"],
+                    "quality": d.get("quality_score", 0.0)
+                }
+                for d in daily_data
+            ]
+        except Exception as e:
+            db_logger.error("get_quality_chart_data_failed", error=str(e))
+            return []
+
+    async def get_progress_chart_data(
+        self,
+        metric: str = "exchanges",
+        days: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Get progress chart data for specific metric (legacy API compatibility).
+
+        Args:
+            metric: exchanges, sessions, or time
+            days: Number of days
+
+        Returns:
+            List of dicts with date, value, and cumulative
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days)
+            daily_data = await self._get_daily_progress_range(start_date, end_date)
+
+            metric_map = {
+                "exchanges": "exchanges",
+                "sessions": "sessions",
+                "time": "duration_minutes"
+            }
+            key = metric_map.get(metric, "exchanges")
+
+            result = []
+            cumulative = 0
+            for d in daily_data:
+                value = d.get(key, 0)
+                cumulative += value
+                result.append({
+                    "date": d["date"],
+                    "value": value,
+                    "cumulative": cumulative
+                })
+
+            return result
+        except Exception as e:
+            db_logger.error("get_progress_chart_data_failed", error=str(e))
+            return []
+
+    async def get_trend_chart_data(
+        self,
+        metric: str = "quality",
+        days: int = 30
+    ) -> List[Dict[str, Any]]:
+        """
+        Get trend chart data with rolling average (legacy API compatibility).
+
+        Args:
+            metric: quality, engagement, sessions
+            days: Number of days
+
+        Returns:
+            List of dicts with date, value, and rolling_avg
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days)
+            daily_data = await self._get_daily_progress_range(start_date, end_date)
+
+            values = self._extract_metric_values(daily_data, metric)
+
+            result = []
+            window_size = 7
+            for i, d in enumerate(daily_data):
+                value = values[i] if i < len(values) else 0.0
+                # Calculate rolling average
+                start_idx = max(0, i - window_size + 1)
+                window = values[start_idx:i + 1]
+                rolling_avg = sum(window) / len(window) if window else 0.0
+
+                result.append({
+                    "date": d["date"],
+                    "value": value,
+                    "rolling_avg": rolling_avg
+                })
+
+            return result
+        except Exception as e:
+            db_logger.error("get_trend_chart_data_failed", error=str(e))
+            return []
+
+    async def get_activity_heatmap_by_weeks(self, weeks: int = 12) -> List[Dict[str, Any]]:
+        """
+        Get activity heatmap data for a number of weeks (legacy API compatibility).
+
+        Returns list of {date, weekday, week, activity, intensity} dicts.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            days = weeks * 7
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days - 1)
+            daily_data = await self._get_daily_progress_range(start_date, end_date)
+
+            # Find max for intensity calculation
+            max_sessions = max(d.get("sessions", 0) for d in daily_data) if daily_data else 1
+            max_sessions = max(max_sessions, 1)  # Avoid division by zero
+
+            result = []
+            for i, d in enumerate(daily_data):
+                day_date = start_date + timedelta(days=i)
+                sessions = d.get("sessions", 0)
+                intensity = min(4, int((sessions / max_sessions) * 4))
+
+                result.append({
+                    "date": day_date.isoformat(),
+                    "weekday": day_date.weekday(),
+                    "week": i // 7,
+                    "activity": sessions,
+                    "intensity": intensity
+                })
+
+            return result
+        except Exception as e:
+            db_logger.error("get_activity_heatmap_legacy_failed", error=str(e))
+            return []
+
+    async def get_topic_distribution(self, days: int = 30) -> List[Dict[str, Any]]:
+        """
+        Get topic distribution data (legacy API compatibility).
+
+        Returns list of {topic, interactions, percentage} dicts.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            breakdown = await self.get_topic_breakdown(days)
+
+            return [
+                {
+                    "topic": t.topic_name,
+                    "interactions": t.session_count,
+                    "percentage": t.percentage
+                }
+                for t in breakdown.topics
+            ]
+        except Exception as e:
+            db_logger.error("get_topic_distribution_failed", error=str(e))
+            return []
+
+    async def get_goal_progress_data(self) -> List[Dict[str, Any]]:
+        """
+        Get goal progress data (legacy API compatibility).
+
+        Returns list of goal dicts.
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            progress = await self.get_goal_progress()
+
+            result = []
+            for goal in progress.active_goals:
+                result.append({
+                    "goal_id": goal.goal_id,
+                    "title": goal.title,
+                    "target": goal.target_value,
+                    "current": goal.current_value,
+                    "progress": goal.progress_percent,
+                    "status": "in_progress"
+                })
+
+            for goal in progress.completed_goals:
+                result.append({
+                    "goal_id": goal.goal_id,
+                    "title": goal.title,
+                    "target": goal.target_value,
+                    "current": goal.current_value,
+                    "progress": 100.0,
+                    "status": "completed"
+                })
+
+            return result
+        except Exception as e:
+            db_logger.error("get_goal_progress_data_failed", error=str(e))
+            return []
+
+    def clear_cache(self, user_id: Optional[str] = None) -> None:
+        """
+        Clear cache entries (legacy API compatibility).
+
+        Args:
+            user_id: If provided, only clear that user's cache entries
+        """
+        if user_id:
+            # Clear user-specific entries
+            keys_to_remove = [k for k in self._cache._cache.keys() if user_id in k]
+            for key in keys_to_remove:
+                self._cache.invalidate(key)
+        else:
+            self._cache.clear()
+
+
 # =============================================================================
 # GLOBAL INSTANCE
 # =============================================================================

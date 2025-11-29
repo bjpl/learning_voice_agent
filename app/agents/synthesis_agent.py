@@ -72,7 +72,8 @@ class SynthesisAgent(BaseAgent):
     """
 
     def __init__(self, agent_id: str = None):
-        super().__init__(agent_id)
+        # Use keyword arguments for BaseAgent
+        super().__init__(agent_id=agent_id, agent_type="SynthesisAgent")
 
         # Initialize Claude client for intelligent summarization
         self.claude_client = anthropic.AsyncAnthropic(
@@ -88,6 +89,10 @@ class SynthesisAgent(BaseAgent):
             "min_ease_factor": 1.3,
             "default_ease_factor": 2.5
         }
+
+        # Additional metrics for synthesis tracking
+        self.metrics["messages_processed"] = 0
+        self.metrics["total_processing_time_ms"] = 0
 
     def _build_topic_graph(self) -> Dict[str, List[str]]:
         """
@@ -557,6 +562,7 @@ class SynthesisAgent(BaseAgent):
                 intervals.append(1)
             elif i == 1:
                 intervals.append(6)
+                current_interval = 6  # Set base for subsequent interval calculations
             else:
                 current_interval = math.ceil(current_interval * ease_factor)
                 intervals.append(current_interval)
@@ -609,3 +615,79 @@ class SynthesisAgent(BaseAgent):
             "schedule": schedule if not isinstance(schedule, Exception) else {},
             "generated_at": datetime.utcnow().isoformat()
         }
+
+    async def handle_message(self, message: AgentMessage) -> AgentMessage:
+        """
+        Handle message with proper routing and metrics tracking
+
+        PATTERN: Message dispatcher with metrics
+        WHY: Tests expect handle_message() interface with synthesis_complete response type
+
+        Args:
+            message: Incoming message with action type
+
+        Returns:
+            AgentMessage with message_type=SYNTHESIS_COMPLETE
+        """
+        import time
+        start_time = time.perf_counter()
+
+        # Get action from message_type or content
+        message_type_str = message.message_type.value if isinstance(message.message_type, MessageType) else str(message.message_type)
+        action = message.content.get("action", message_type_str)
+
+        # Route to appropriate handler
+        if action == "generate_insights":
+            result = await self._generate_insights(message.content)
+        elif action in ("create_summary", "synthesis_request"):
+            result = await self._create_summary(message.content)
+        elif action == "recommend_topics":
+            result = await self._recommend_topics(message.content)
+        elif action == "create_schedule":
+            result = await self._create_schedule(message.content)
+        elif action in ("synthesize_all", "synthesis_all"):
+            result = await self._synthesize_all(message.content)
+        else:
+            # Unknown action - try synthesize_all as fallback or return error
+            if message.content.get("analysis") or message.content.get("history"):
+                result = await self._synthesize_all(message.content)
+            else:
+                result = {"error": f"Unknown action: {action}"}
+
+        # Track metrics
+        processing_time_ms = (time.perf_counter() - start_time) * 1000
+        self.metrics["messages_processed"] += 1
+        self.metrics["total_processing_time_ms"] += processing_time_ms
+
+        return AgentMessage(
+            sender=self.agent_id,
+            recipient=message.sender,
+            message_type=MessageType.SYNTHESIS_COMPLETE,
+            content=result,
+            correlation_id=message.message_id
+        )
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Get agent metrics including synthesis-specific stats
+
+        Returns:
+            Dictionary with agent metrics and averages
+        """
+        metrics = {
+            "agent_id": self.agent_id,
+            "agent_type": self.agent_type,
+            "messages_processed": self.metrics["messages_processed"],
+            "total_processing_time_ms": self.metrics["total_processing_time_ms"],
+            "errors": self.metrics.get("errors", 0),
+        }
+
+        # Calculate average processing time
+        if self.metrics["messages_processed"] > 0:
+            metrics["avg_processing_time_ms"] = (
+                self.metrics["total_processing_time_ms"] / self.metrics["messages_processed"]
+            )
+        else:
+            metrics["avg_processing_time_ms"] = 0
+
+        return metrics

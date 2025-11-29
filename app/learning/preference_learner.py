@@ -10,7 +10,8 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from types import SimpleNamespace
+from typing import Optional, Dict, List, Any, Union
 from collections import defaultdict
 
 from app.learning.config import LearningConfig, learning_config
@@ -522,3 +523,35 @@ class PreferenceLearner:
                 summary["low_confidence"].append(item)
 
         return summary
+
+    async def get_adaptation_context(
+        self,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get adaptation context for response generation.
+
+        This is a wrapper for test compatibility that combines
+        preferences and learning history into adaptation context.
+        """
+        summary = self.get_preference_summary(session_id, user_id)
+
+        # Get preferences
+        preferences = await self.get_preferences(session_id, user_id)
+
+        # Build adaptation context as an object with attribute access
+        context = SimpleNamespace(
+            session_id=session_id,
+            user_id=user_id,
+            preferences=preferences,
+            summary=summary,
+            has_preferences=len(preferences) > 0,
+            confidence_levels=SimpleNamespace(
+                high=len(summary.get("high_confidence", [])),
+                medium=len(summary.get("medium_confidence", [])),
+                low=len(summary.get("low_confidence", []))
+            )
+        )
+
+        return context

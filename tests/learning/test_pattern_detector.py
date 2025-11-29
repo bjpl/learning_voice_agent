@@ -27,7 +27,7 @@ class TestPatternDetectorInitialization:
         """Test that initialization sets the initialized flag."""
         detector = PatternDetector(config=learning_config)
 
-        with patch('app.learning.pattern_detector.EmbeddingGenerator') as mock_emb:
+        with patch('app.vector.embeddings.EmbeddingGenerator') as mock_emb:
             mock_instance = AsyncMock()
             mock_emb.return_value = mock_instance
             await detector.initialize()
@@ -50,7 +50,7 @@ class TestPatternDetectorInitialization:
         """Test that initialization handles missing embedding generator."""
         detector = PatternDetector(config=learning_config)
 
-        with patch('app.learning.pattern_detector.EmbeddingGenerator', side_effect=ImportError):
+        with patch('app.vector.embeddings.EmbeddingGenerator', side_effect=ImportError):
             await detector.initialize()
 
         # Should still be initialized, just without embeddings

@@ -1143,6 +1143,356 @@ class TrendAnalyzer:
         else:
             return 0.5
 
+    # =========================================================================
+    # TEST COMPATIBILITY WRAPPER METHODS
+    # =========================================================================
+
+    async def analyze_quality_trend(self, daily_data: List[Any]) -> 'SimpleTrendData':
+        """
+        Analyze quality trend from daily progress data.
+
+        Args:
+            daily_data: List of DailyProgress objects
+
+        Returns:
+            SimpleTrendData with trend analysis
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # Extract quality scores from daily data
+        values = []
+        for d in daily_data:
+            score = getattr(d, 'avg_quality_score', None) or getattr(d, 'quality_score', 0.5)
+            if score is not None:
+                values.append(score)
+
+        return self._analyze_values(values, "quality_score")
+
+    async def analyze_activity_trend(self, daily_data: List[Any]) -> 'SimpleTrendData':
+        """
+        Analyze activity trend from daily progress data.
+
+        Args:
+            daily_data: List of DailyProgress objects
+
+        Returns:
+            SimpleTrendData with trend analysis
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # Extract activity (exchange counts) from daily data
+        values = []
+        for d in daily_data:
+            count = getattr(d, 'total_exchanges', None) or getattr(d, 'exchange_count', 0)
+            values.append(float(count) if count is not None else 0.0)
+
+        return self._analyze_values(values, "activity")
+
+    async def analyze_engagement_trend(self, daily_data: List[Any]) -> 'SimpleTrendData':
+        """
+        Analyze engagement trend from daily progress data.
+
+        Args:
+            daily_data: List of DailyProgress objects
+
+        Returns:
+            SimpleTrendData with trend analysis
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # Extract engagement (sessions) from daily data
+        values = []
+        for d in daily_data:
+            sessions = getattr(d, 'total_sessions', None) or getattr(d, 'session_count', 0)
+            values.append(float(sessions) if sessions is not None else 0.0)
+
+        return self._analyze_values(values, "engagement")
+
+    def _analyze_values(self, values: List[float], metric: str) -> 'SimpleTrendData':
+        """Analyze a list of values and return SimpleTrendData."""
+        from app.analytics.progress_models import TrendDirection as ProgressTrendDirection
+
+        if len(values) < 3:
+            return SimpleTrendData(
+                metric=metric,
+                direction=ProgressTrendDirection.STABLE,
+                confidence=0.0,
+                data_points=values,
+                change_percent=0.0
+            )
+
+        # Calculate trend using linear regression
+        x = list(range(len(values)))
+        slope, intercept = self._linear_regression(x, values)
+        r_squared = self._calculate_r_squared(x, values, slope, intercept)
+
+        # Calculate percentage change
+        start_val = values[0] if values[0] != 0 else 0.001
+        change = (values[-1] - values[0]) / abs(start_val) * 100
+
+        # Determine direction
+        if change > 5 and r_squared > 0.2:
+            direction = ProgressTrendDirection.IMPROVING
+        elif change < -5 and r_squared > 0.2:
+            direction = ProgressTrendDirection.DECLINING
+        else:
+            direction = ProgressTrendDirection.STABLE
+
+        return SimpleTrendData(
+            metric=metric,
+            direction=direction,
+            confidence=r_squared,
+            data_points=values,
+            change_percent=change
+        )
+
+    async def calculate_rolling_average(
+        self,
+        data: List[float],
+        window: int = 7
+    ) -> List[float]:
+        """
+        Calculate rolling average of values.
+
+        Args:
+            data: List of values
+            window: Window size
+
+        Returns:
+            List of rolling average values
+        """
+        if not data:
+            return []
+
+        result = []
+        for i in range(len(data)):
+            start_idx = max(0, i - window + 1)
+            window_values = data[start_idx:i + 1]
+            result.append(sum(window_values) / len(window_values))
+
+        return result
+
+    async def detect_seasonality(self, daily_data: List[Any]) -> Dict[str, Any]:
+        """
+        Detect weekly seasonality patterns.
+
+        Args:
+            daily_data: List of DailyProgress objects
+
+        Returns:
+            Dict with seasonality detection results
+        """
+        if len(daily_data) < 14:
+            return {"detected": False, "reason": "Insufficient data (need 14+ days)"}
+
+        # Group by day of week
+        by_day = defaultdict(list)
+        for d in daily_data:
+            day_date = getattr(d, 'date', None)
+            if day_date:
+                weekday = day_date.weekday()
+                exchanges = getattr(d, 'total_exchanges', 0)
+                by_day[weekday].append(exchanges)
+
+        if len(by_day) < 5:
+            return {"detected": False, "reason": "Not enough weekday variety"}
+
+        # Calculate averages per day
+        day_avgs = {day: sum(vals) / len(vals) for day, vals in by_day.items() if vals}
+
+        if not day_avgs:
+            return {"detected": False, "reason": "No activity data"}
+
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        best_day = max(day_avgs.items(), key=lambda x: x[1])[0]
+        worst_day = min(day_avgs.items(), key=lambda x: x[1])[0]
+
+        # Check if there's meaningful variation
+        avg_all = sum(day_avgs.values()) / len(day_avgs)
+        variation = max(day_avgs.values()) - min(day_avgs.values())
+        has_pattern = variation > avg_all * 0.3 if avg_all > 0 else False
+
+        return {
+            "detected": has_pattern,
+            "best_day": days[best_day],
+            "worst_day": days[worst_day],
+            "day_averages": {days[d]: avg for d, avg in day_avgs.items()},
+            "reason": "Weekly pattern detected" if has_pattern else "No significant pattern"
+        }
+
+    async def forecast(
+        self,
+        data: List[float],
+        days: int = 7,
+        method: str = "linear"
+    ) -> List[Dict[str, Any]]:
+        """
+        Forecast future values.
+
+        Args:
+            data: Historical values
+            days: Number of days to forecast
+            method: Forecasting method ("linear" or "ema")
+
+        Returns:
+            List of forecast dicts with value, confidence, bounds
+        """
+        if len(data) < 3:
+            return []
+
+        # Calculate basic statistics
+        mean_val = sum(data) / len(data)
+        if len(data) > 1:
+            variance = sum((x - mean_val) ** 2 for x in data) / len(data)
+            std_dev = variance ** 0.5
+        else:
+            std_dev = 0
+
+        forecasts = []
+
+        if method == "linear":
+            # Linear regression forecast
+            x = list(range(len(data)))
+            slope, intercept = self._linear_regression(x, data)
+
+            for i in range(days):
+                future_x = len(data) + i
+                value = slope * future_x + intercept
+                # Confidence decreases with distance
+                confidence = max(0.1, 0.9 - i * 0.1)
+                margin = std_dev * (1 + i * 0.2)
+
+                forecasts.append({
+                    "day": i + 1,
+                    "value": value,
+                    "confidence": confidence,
+                    "lower_bound": value - margin,
+                    "upper_bound": value + margin
+                })
+        else:
+            # EMA forecast (exponential moving average)
+            alpha = 0.3
+            ema = data[0]
+            for val in data[1:]:
+                ema = alpha * val + (1 - alpha) * ema
+
+            for i in range(days):
+                value = ema
+                confidence = max(0.1, 0.8 - i * 0.05)
+                margin = std_dev * (1 + i * 0.15)
+
+                forecasts.append({
+                    "day": i + 1,
+                    "value": value,
+                    "confidence": confidence,
+                    "lower_bound": value - margin,
+                    "upper_bound": value + margin
+                })
+
+        return forecasts
+
+    async def compare_periods(
+        self,
+        current: List[float],
+        previous: List[float]
+    ) -> Dict[str, Any]:
+        """
+        Compare two periods.
+
+        Args:
+            current: Current period values
+            previous: Previous period values
+
+        Returns:
+            Dict with comparison results
+        """
+        from app.analytics.progress_models import TrendDirection as ProgressTrendDirection
+
+        if not current or not previous:
+            return {"error": "Empty data provided"}
+
+        current_avg = sum(current) / len(current)
+        previous_avg = sum(previous) / len(previous)
+
+        change = current_avg - previous_avg
+        change_percent = (change / previous_avg * 100) if previous_avg != 0 else 0
+
+        if change_percent > 5:
+            direction = ProgressTrendDirection.IMPROVING.value
+        elif change_percent < -5:
+            direction = ProgressTrendDirection.DECLINING.value
+        else:
+            direction = ProgressTrendDirection.STABLE.value
+
+        return {
+            "current_avg": current_avg,
+            "previous_avg": previous_avg,
+            "change": change,
+            "change_percent": change_percent,
+            "direction": direction
+        }
+
+    async def get_trend_summary(self, daily_data: List[Any]) -> Dict[str, Any]:
+        """
+        Get comprehensive trend summary.
+
+        Args:
+            daily_data: List of DailyProgress objects
+
+        Returns:
+            Dict with all trend analysis
+        """
+        quality = await self.analyze_quality_trend(daily_data)
+        activity = await self.analyze_activity_trend(daily_data)
+        engagement = await self.analyze_engagement_trend(daily_data)
+        seasonality = await self.detect_seasonality(daily_data)
+
+        # Get dates for period info
+        dates = [getattr(d, 'date', None) for d in daily_data if getattr(d, 'date', None)]
+
+        # Quality forecast
+        quality_values = [
+            getattr(d, 'avg_quality_score', 0.5) or 0.5
+            for d in daily_data
+        ]
+        quality_forecast = await self.forecast(quality_values, days=7)
+
+        return {
+            "quality": quality,
+            "activity": activity,
+            "engagement": engagement,
+            "seasonality": seasonality,
+            "quality_forecast": quality_forecast,
+            "period": {
+                "start": min(dates) if dates else None,
+                "end": max(dates) if dates else None,
+                "days": len(daily_data)
+            }
+        }
+
+
+@dataclass
+class SimpleTrendData:
+    """Simple trend data for test compatibility."""
+    metric: str
+    direction: Any  # TrendDirection enum
+    confidence: float
+    data_points: List[float] = field(default_factory=list)
+    change_percent: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "metric": self.metric,
+            "direction": self.direction.value if hasattr(self.direction, 'value') else str(self.direction),
+            "confidence": self.confidence,
+            "change_percent": self.change_percent,
+            "data_points_count": len(self.data_points)
+        }
+
 
 # Global trend analyzer instance
 trend_analyzer = TrendAnalyzer()

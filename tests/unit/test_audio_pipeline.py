@@ -176,7 +176,8 @@ class TestAudioPipeline:
         )
 
         assert result == "This is transcribed text."
-        assert test_audio_pipeline.transcription_strategy.client.audio.transcriptions.create.called
+        # The fixture mocks transcribe() directly, so verify that was called
+        assert test_audio_pipeline.transcription_strategy.transcribe.called
 
     @pytest.mark.asyncio
     async def test_transcribe_audio_with_format_hint(self, test_audio_pipeline, sample_audio_wav):

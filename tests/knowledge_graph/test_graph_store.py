@@ -19,8 +19,8 @@ class TestGraphStoreInitialization:
         config = KnowledgeGraphConfig()
         store = KnowledgeGraphStore(config)
 
-        # Mock AsyncGraphDatabase.driver
-        with patch('app.knowledge_graph.graph_store.AsyncGraphDatabase.driver', return_value=driver):
+        # Mock AsyncGraphDatabase.driver - patch at the neo4j module level
+        with patch('neo4j.AsyncGraphDatabase.driver', return_value=driver):
             await store.initialize()
 
         assert store._initialized is True
@@ -42,7 +42,7 @@ class TestGraphStoreInitialization:
         config = KnowledgeGraphConfig()
         store = KnowledgeGraphStore(config)
 
-        with patch('app.knowledge_graph.graph_store.AsyncGraphDatabase.driver', return_value=driver):
+        with patch('neo4j.AsyncGraphDatabase.driver', return_value=driver):
             await store.initialize()
 
         # Should have run schema creation queries
@@ -409,6 +409,8 @@ class TestErrorHandling:
 
     async def test_handles_connection_failure(self):
         """Test handling of connection failures"""
+        import tenacity
+
         config = KnowledgeGraphConfig()
         store = KnowledgeGraphStore(config)
 
@@ -418,8 +420,9 @@ class TestErrorHandling:
             side_effect=Exception("Connection failed")
         )
 
-        with patch('app.knowledge_graph.graph_store.AsyncGraphDatabase.driver', return_value=mock_driver):
-            with pytest.raises(Exception, match="Connection failed"):
+        with patch('neo4j.AsyncGraphDatabase.driver', return_value=mock_driver):
+            # The @with_retry decorator wraps exceptions in RetryError
+            with pytest.raises(tenacity.RetryError):
                 await store.initialize()
 
     async def test_handles_query_failure(self, mock_knowledge_graph_store, mock_neo4j_driver):

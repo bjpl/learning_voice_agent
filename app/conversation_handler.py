@@ -47,6 +47,15 @@ class ConversationHandler:
         self._vector_store = None  # Lazy loaded
         self._use_advanced_prompts = settings.use_chain_of_thought or settings.use_few_shot
 
+    @property
+    def system_prompt(self) -> str:
+        """Property for test compatibility - returns basic system prompt."""
+        return self._create_basic_system_prompt()
+
+    def _create_system_prompt(self) -> str:
+        """Alias for _create_basic_system_prompt for test compatibility."""
+        return self._create_basic_system_prompt()
+
     async def _get_vector_store(self):
         """Lazy load vector store for RAG."""
         if self._vector_store is None and settings.enable_vector_search:
