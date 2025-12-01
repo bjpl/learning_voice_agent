@@ -23,7 +23,6 @@ from functools import lru_cache
 
 try:
     import chromadb
-    from chromadb.config import Settings as ChromaSettings
     CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
@@ -75,14 +74,10 @@ class VectorStore:
 
     def _initialize_sync(self):
         """Synchronous initialization for ChromaDB."""
-        # Configure ChromaDB with persistence
-        chroma_settings = ChromaSettings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=self.persist_directory,
-            anonymized_telemetry=False
+        # Use new ChromaDB PersistentClient API (v0.4+)
+        self._client = chromadb.PersistentClient(
+            path=self.persist_directory
         )
-
-        self._client = chromadb.Client(chroma_settings)
 
         # Create or get collection for conversations
         self._collection = self._client.get_or_create_collection(
@@ -364,17 +359,10 @@ class VectorStore:
 
     async def close(self):
         """Cleanup vector store resources."""
-        if self._client:
-            # Persist data before closing
-            try:
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: self._client.persist()
-                )
-            except Exception as e:
-                logger.warning(f"Error persisting vector store: {e}")
-
+        # PersistentClient handles persistence automatically, no explicit persist() needed
         self._initialized = False
+        self._client = None
+        self._collection = None
 
 
 # Global vector store instance
