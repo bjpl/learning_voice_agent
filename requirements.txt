@@ -56,7 +56,7 @@ neo4j==5.16.0
 
 # Week 4: Scale Testing and Production
 locust==2.24.0
-psutil==5.9.8
+psutil==7.1.3
 ruff==0.1.14
 mypy==1.8.0
 
