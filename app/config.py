@@ -49,6 +49,26 @@ class Settings(BaseSettings):
     semantic_search_threshold: float = Field(0.5, env="SEMANTIC_SEARCH_THRESHOLD")
     enable_vector_search: bool = Field(True, env="ENABLE_VECTOR_SEARCH")
 
+    # RuVector Configuration (Phase 1)
+    vector_backend: str = Field("auto", env="VECTOR_BACKEND")  # auto, chromadb, ruvector
+    ruvector_persist_directory: str = Field("./ruvector_db", env="RUVECTOR_PERSIST_DIR")
+    ruvector_enable_learning: bool = Field(True, env="RUVECTOR_ENABLE_LEARNING")
+    ruvector_enable_compression: bool = Field(True, env="RUVECTOR_ENABLE_COMPRESSION")
+    ruvector_compression_tiers: str = Field(
+        "hot:f32:24h,warm:f16:168h,cold:i8",
+        env="RUVECTOR_COMPRESSION_TIERS"
+    )
+    ruvector_gnn_enabled: bool = Field(True, env="RUVECTOR_GNN_ENABLED")
+    ruvector_attention_heads: int = Field(8, env="RUVECTOR_ATTENTION_HEADS")
+
+    # Feature Flags for A/B Testing
+    vector_ab_test_enabled: bool = Field(False, env="VECTOR_AB_TEST_ENABLED")
+    vector_ab_test_ruvector_percentage: int = Field(50, env="VECTOR_AB_TEST_RUVECTOR_PCT")
+
+    # Graph Query Configuration (Phase 2 prep)
+    enable_graph_queries: bool = Field(False, env="ENABLE_GRAPH_QUERIES")
+    graph_query_timeout_ms: int = Field(500, env="GRAPH_QUERY_TIMEOUT_MS")
+
     # Week 3: Advanced Prompts Configuration
     use_chain_of_thought: bool = Field(True, env="USE_CHAIN_OF_THOUGHT")
     use_few_shot: bool = Field(True, env="USE_FEW_SHOT")

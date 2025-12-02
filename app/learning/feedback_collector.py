@@ -36,7 +36,8 @@ class FeedbackCollector:
     def __init__(
         self,
         config: Optional[LearningConfig] = None,
-        feedback_store: Optional[FeedbackStore] = None
+        feedback_store: Optional[FeedbackStore] = None,
+        vector_feedback_bridge: Optional[Any] = None
     ):
         """
         Initialize the feedback collector.
@@ -44,9 +45,11 @@ class FeedbackCollector:
         Args:
             config: Learning configuration
             feedback_store: Storage backend for feedback
+            vector_feedback_bridge: Optional bridge to vector store learning
         """
         self.config = config or learning_config
         self.feedback_store = feedback_store or FeedbackStore(self.config)
+        self.vector_feedback_bridge = vector_feedback_bridge
 
         # In-memory tracking for implicit feedback
         self._interaction_cache: Dict[str, Dict[str, Any]] = {}
@@ -131,6 +134,17 @@ class FeedbackCollector:
         await self.feedback_store.store(feedback)
         logger.debug(f"Collected thumbs up for query {query_id}")
 
+        # Trigger vector training if enabled
+        if self.vector_feedback_bridge:
+            try:
+                await self.vector_feedback_bridge.process_explicit_feedback(
+                    conversation_id=query_id,
+                    is_positive=True,
+                    weight=1.0
+                )
+            except Exception as e:
+                logger.warning(f"Vector training failed for thumbs up: {e}")
+
         return feedback
 
     async def collect_thumbs_down(
@@ -159,6 +173,17 @@ class FeedbackCollector:
 
         await self.feedback_store.store(feedback)
         logger.debug(f"Collected thumbs down for query {query_id}")
+
+        # Trigger vector training if enabled
+        if self.vector_feedback_bridge:
+            try:
+                await self.vector_feedback_bridge.process_explicit_feedback(
+                    conversation_id=query_id,
+                    is_positive=False,
+                    weight=1.0
+                )
+            except Exception as e:
+                logger.warning(f"Vector training failed for thumbs down: {e}")
 
         return feedback
 

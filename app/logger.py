@@ -91,36 +91,107 @@ def configure_structlog(
     root_logger.setLevel(getattr(logging, log_level.upper()))
 
 
-def get_logger(name: str = "voice_agent") -> "structlog.stdlib.BoundLogger":
+def get_logger(name: str = "voice_agent", **bind_kwargs) -> "structlog.stdlib.BoundLogger":
     """
     Get a configured structlog logger instance.
 
     Args:
         name: Logger name for identification
+        **bind_kwargs: Additional context to bind to this logger instance
+                      (e.g., agent_id="abc123", session_id="xyz")
 
     Returns:
         Configured structlog BoundLogger instance
 
-    PATTERN: Factory function for logger instances
-    WHY: Easy to get loggers with consistent configuration
+    PATTERN: Factory function for logger instances with context binding
+    WHY: Easy to get loggers with consistent configuration and bound context
 
     Usage:
         logger = get_logger("my_module")
         logger.info("event_name", key1="value1", key2=123)
-        logger.error("api_failed", error=str(e), endpoint="/api/test")
+
+        # With bound context (appears in all log messages from this logger)
+        logger = get_logger("agent.coordinator", agent_id="abc123")
+        logger.info("processing")  # Will include agent_id in output
     """
     if not STRUCTLOG_AVAILABLE:
-        # Fallback to standard logging
-        return _get_stdlib_logger(name)
+        # Fallback to standard logging with compat wrapper
+        logger = _get_stdlib_logger(name)
+        # Bind context if provided
+        if bind_kwargs:
+            logger = logger.bind(**bind_kwargs)
+        return logger
 
     # Ensure structlog is configured
     configure_structlog()
 
-    return structlog.get_logger(name)
+    logger = structlog.get_logger(name)
+
+    # Bind additional context if provided
+    if bind_kwargs:
+        logger = logger.bind(**bind_kwargs)
+
+    return logger
 
 
-def _get_stdlib_logger(name: str) -> logging.Logger:
-    """Fallback to standard library logging if structlog unavailable."""
+class _StructlogCompatibleLogger:
+    """
+    Wrapper for stdlib logging.Logger to provide structlog-compatible interface.
+
+    PATTERN: Adapter pattern for API compatibility
+    WHY: Allow code to use structlog API even when structlog is unavailable
+    """
+
+    def __init__(self, logger: logging.Logger):
+        self._logger = logger
+        self._bound_context = {}
+
+    def bind(self, **kwargs):
+        """Bind context to logger (simulated for stdlib logger)."""
+        new_logger = _StructlogCompatibleLogger(self._logger)
+        new_logger._bound_context = {**self._bound_context, **kwargs}
+        return new_logger
+
+    def _format_message(self, event: str, **kwargs) -> str:
+        """Format message with bound context and kwargs."""
+        context = {**self._bound_context, **kwargs}
+        if context:
+            context_str = " ".join(f"{k}={v}" for k, v in context.items())
+            return f"{event} {context_str}"
+        return event
+
+    def debug(self, event: str, **kwargs):
+        """Log debug message with kwargs support."""
+        self._logger.debug(self._format_message(event, **kwargs))
+
+    def info(self, event: str, **kwargs):
+        """Log info message with kwargs support."""
+        self._logger.info(self._format_message(event, **kwargs))
+
+    def warning(self, event: str, **kwargs):
+        """Log warning message with kwargs support."""
+        self._logger.warning(self._format_message(event, **kwargs))
+
+    def error(self, event: str, **kwargs):
+        """Log error message with kwargs support."""
+        exc_info = kwargs.pop('exc_info', False)
+        self._logger.error(self._format_message(event, **kwargs), exc_info=exc_info)
+
+    def critical(self, event: str, **kwargs):
+        """Log critical message with kwargs support."""
+        self._logger.critical(self._format_message(event, **kwargs))
+
+    def exception(self, event: str, **kwargs):
+        """Log exception with kwargs support."""
+        self._logger.exception(self._format_message(event, **kwargs))
+
+
+def _get_stdlib_logger(name: str) -> _StructlogCompatibleLogger:
+    """
+    Fallback to standard library logging if structlog unavailable.
+
+    Returns a wrapper that provides structlog-compatible API.
+    """
     logger = logging.getLogger(name)
 
     if not logger.handlers:
@@ -133,7 +204,7 @@ def _get_stdlib_logger(name: str) -> logging.Logger:
         logger.setLevel(logging.INFO)
         logger.propagate = False
 
-    return logger
+    return _StructlogCompatibleLogger(logger)
 
 
 # Pre-configured loggers for different components
