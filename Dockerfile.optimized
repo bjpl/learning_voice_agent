@@ -5,7 +5,7 @@
 # =============================================================================
 # Stage 1: Builder - Install dependencies
 # =============================================================================
-FROM python:3.11-slim as builder
+FROM python:3.14-slim as builder
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ RUN pip install --user --no-cache-dir gunicorn==21.2.0
 # =============================================================================
 # Stage 2: Production - Minimal runtime image
 # =============================================================================
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Labels for container registry
 LABEL maintainer="Learning Voice Agent Team"
