@@ -1,26 +1,26 @@
 # Core Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-dotenv==1.0.0
-python-multipart==0.0.6
-pydantic==2.5.3
-pydantic-settings==2.1.0
-httpx==0.26.0
-jinja2==3.1.3
+fastapi==0.124.0
+uvicorn[standard]==0.38.0
+python-dotenv==1.2.1
+python-multipart==0.0.20
+pydantic==2.12.5
+pydantic-settings==2.12.0
+httpx==0.28.1
+jinja2==3.1.6
 websockets==12.0
 
 # AI/ML APIs
 # NOTE: anthropic updated for security and API compatibility
 # Breaking change: Use client.messages.create() instead of client.completion()
 anthropic>=0.50.0
-openai==1.10.0
+openai==1.109.1
 
 # Telephony
 twilio==8.11.0
 
 # Data Storage
 redis[hiredis]==5.0.1
-aiosqlite==0.19.0
+aiosqlite==0.21.0
 
 # Week 1: Infrastructure & Resilience
 structlog==24.1.0
@@ -31,16 +31,16 @@ circuitbreaker==1.4.0
 pytest==7.4.4
 pytest-asyncio==0.23.4
 pytest-cov==4.1.0
-fakeredis==2.21.0
+fakeredis==2.32.1
 
 # Week 2: Production Hardening
-alembic==1.13.1
-sqlalchemy[asyncio]==2.0.25
-bandit==1.7.7
+alembic==1.17.2
+sqlalchemy[asyncio]==2.0.44
+bandit==1.9.2
 safety==2.3.5
 
 # Security (Plan A)
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
 # Updated cryptography for CVE fixes (was 41.0.7)
 cryptography>=42.0.0
@@ -55,10 +55,10 @@ neo4j==5.16.0
 # aiortc==1.6.0 # Skipped - requires FFmpeg libs
 
 # Week 4: Scale Testing and Production
-locust==2.24.0
+locust==2.42.6
 psutil==5.9.8
-ruff==0.1.14
-mypy==1.8.0
+ruff==0.14.8
+mypy==1.19.0
 
 # Security: XXE Protection
 defusedxml>=0.7.1
