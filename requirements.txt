@@ -25,7 +25,7 @@ asyncpg==0.29.0  # PostgreSQL async driver
 
 # Week 1: Infrastructure & Resilience
 structlog==24.1.0
-tenacity==8.2.3
+tenacity==9.1.2
 circuitbreaker==1.4.0
 
 # Week 1: Testing
