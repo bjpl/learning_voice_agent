@@ -165,6 +165,7 @@ class TestCleanupDaemon:
         """Test that daemon stops gracefully."""
         import sys
         from scripts.session_cleanup import CleanupDaemon
+        from unittest.mock import AsyncMock, patch
 
         daemon = CleanupDaemon(interval_seconds=1)
 
@@ -176,21 +177,48 @@ class TestCleanupDaemon:
             assert daemon.running is False
             return
 
-        # Start daemon in background
-        task = asyncio.create_task(daemon.start())
+        # Mock Redis client to avoid connection issues
+        mock_redis = MockResilientRedis()
+        mock_job = AsyncMock()
+        mock_job.run = AsyncMock(return_value={"test": "stats"})
 
-        # Let it run briefly
-        await asyncio.sleep(0.1)
+        # Patch the initialization to use mocks
+        with patch('scripts.session_cleanup.ResilientRedisClient') as mock_redis_class, \
+             patch('scripts.session_cleanup.SessionCleanupJob') as mock_job_class:
 
-        # Stop it
-        await daemon.stop()
+            mock_redis_class.return_value = mock_redis
+            mock_job_class.return_value = mock_job
 
-        # Should complete without hanging
-        try:
-            await asyncio.wait_for(task, timeout=2.0)
-        except asyncio.TimeoutError:
-            task.cancel()
-            pytest.fail("Daemon did not stop in time")
+            # Start daemon in background
+            task = asyncio.create_task(daemon.start())
+
+            # Wait for daemon to fully start (check that running flag is set)
+            max_wait = 2.0
+            elapsed = 0.0
+            while not daemon.running and elapsed < max_wait:
+                await asyncio.sleep(0.05)
+                elapsed += 0.05
+
+            if not daemon.running:
+                task.cancel()
+                pytest.fail("Daemon did not start in time")
+
+            # Stop it and wait for stop to complete
+            await daemon.stop()
+
+            # Give the daemon loop a moment to process the running=False change
+            # and exit cleanly
+            await asyncio.sleep(0.1)
+
+            # Should complete without hanging
+            try:
+                await asyncio.wait_for(task, timeout=2.0)
+            except asyncio.TimeoutError:
+                task.cancel()
+                pytest.fail("Daemon did not stop in time")
+
+            # Verify daemon stopped cleanly
+            assert daemon.running is False
 
 
 class TestCleanupJobConfiguration:

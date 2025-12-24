@@ -16,7 +16,7 @@ from app.search.config import HybridSearchConfig
 async def test_db(tmp_path):
     """Create test database with sample data"""
     db_path = str(tmp_path / "test_hybrid.db")
-    db = Database(db_path=db_path)
+    db = Database(database_url=db_path)
     await db.initialize()
 
     # Add sample conversations
