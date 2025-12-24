@@ -341,6 +341,107 @@ class DashboardMetricsCalculator:
             "active_days": active_days
         }
 
+    async def get_streak_info(self) -> LearningStreak:
+        """
+        Get current learning streak information.
+
+        Returns:
+            LearningStreak instance with streak statistics
+        """
+        streak = LearningStreak(
+            current_streak=0,
+            longest_streak=0,
+            last_active_date=None,
+            streak_start_date=None,
+            is_active_today=False
+        )
+
+        if not self._feedback_store:
+            return streak
+
+        try:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=90)
+            sessions = await self._feedback_store.get_sessions_in_range(start_date, end_date)
+
+            if sessions:
+                streak = self.calculate_streak_from_sessions(sessions, start_date, end_date)
+
+        except Exception as e:
+            db_logger.warning("get_streak_info_failed", error=str(e))
+
+        return streak
+
+    async def get_active_goals(self) -> List[Any]:
+        """
+        Get active learning goals.
+
+        Returns:
+            List of active goal objects
+        """
+        # Placeholder implementation - would integrate with goal tracking system
+        return []
+
+    async def get_completed_goals(self) -> List[Any]:
+        """
+        Get completed learning goals.
+
+        Returns:
+            List of completed goal objects
+        """
+        # Placeholder implementation - would integrate with goal tracking system
+        return []
+
+    async def generate_goal_suggestions(
+        self,
+        overall_metrics: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate suggested goals based on metrics.
+
+        Args:
+            overall_metrics: Dictionary of overall metrics
+
+        Returns:
+            List of suggested goal dictionaries
+        """
+        suggestions = []
+
+        # Suggest quality improvement if below threshold
+        avg_quality = overall_metrics.get("avg_quality_score", 0.0)
+        if avg_quality < 0.8:
+            suggestions.append({
+                "type": "quality",
+                "title": "Improve Quality Score",
+                "description": f"Reach 80% average quality (current: {avg_quality:.1%})",
+                "target": 0.8,
+                "current": avg_quality
+            })
+
+        # Suggest session consistency
+        sessions = overall_metrics.get("sessions_count", 0)
+        if sessions < 20:
+            suggestions.append({
+                "type": "consistency",
+                "title": "Increase Session Frequency",
+                "description": "Complete 20 sessions this month",
+                "target": 20,
+                "current": sessions
+            })
+
+        # Suggest topic exploration
+        topics = overall_metrics.get("topics_explored", 0)
+        if topics < 5:
+            suggestions.append({
+                "type": "exploration",
+                "title": "Explore More Topics",
+                "description": "Explore at least 5 different topics",
+                "target": 5,
+                "current": topics
+            })
+
+        return suggestions[:3]  # Return top 3 suggestions
+
 
 # Module-level instance
 dashboard_metrics_calculator = DashboardMetricsCalculator()

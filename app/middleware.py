@@ -111,22 +111,44 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """
     Add unique request ID for tracing and debugging.
+    Integrates with centralized logging for correlation ID tracking.
+
+    PATTERN: Request tracing middleware with logger integration
+    WHY: Track requests across distributed systems and async operations
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         import uuid
+        from app.logger import set_correlation_id, clear_correlation_id
 
-        # Check for existing request ID (from load balancer)
-        request_id = request.headers.get("X-Request-ID")
-        if not request_id:
-            request_id = str(uuid.uuid4())
+        # Check for existing correlation ID (from load balancer or upstream service)
+        # Support both X-Request-ID and X-Correlation-ID headers
+        correlation_id = (
+            request.headers.get("X-Correlation-ID") or
+            request.headers.get("X-Request-ID")
+        )
 
-        # Store in request state for logging
-        request.state.request_id = request_id
+        if not correlation_id:
+            correlation_id = str(uuid.uuid4())
 
-        response = await call_next(request)
+        # Set correlation ID in context for logging
+        # This makes the correlation ID available to all loggers in this request
+        set_correlation_id(correlation_id)
 
-        # Add to response
-        response.headers["X-Request-ID"] = request_id
+        # Store in request state for logging and access in route handlers
+        request.state.request_id = correlation_id
+        request.state.correlation_id = correlation_id
 
-        return response
+        try:
+            response = await call_next(request)
+
+            # Add correlation ID to response headers for client tracking
+            response.headers["X-Request-ID"] = correlation_id
+            response.headers["X-Correlation-ID"] = correlation_id
+
+            return response
+
+        finally:
+            # CRITICAL: Clear correlation ID to prevent leakage between requests
+            # In async contexts, context vars can persist if not cleaned up
+            clear_correlation_id()
