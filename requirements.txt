@@ -52,7 +52,7 @@ chromadb==0.4.22
 torch>=2.0.0,<2.2.0
 sentence-transformers>=2.2.0,<3.0.0
 numpy>=1.24.0
-neo4j==5.16.0
+neo4j==6.0.3
 
 # Week 3: WebRTC Support
 # aiortc==1.6.0 # Skipped - requires FFmpeg libs
